@@ -1,12 +1,12 @@
 /*
  * =====================================================================================
  *
- *       Filename:  db.h
+ *       Filename:  unittest.cc
  *
  *    Description:  
  *
  *        Version:  1.0
- *        Created:  06/11/2012 11:24:18 AM
+ *        Created:  06/11/2012 04:27:03 PM
  *       Revision:  none
  *       Compiler:  gcc
  *
@@ -16,14 +16,13 @@
  * =====================================================================================
  */
 
-#ifndef AODB_DB_H_
-#define AODB_DB_H_
+#include <gtest/gtest.h>
+#include "ub_log.h"
 
-#include <stdint.h>
-#include <stdio.h>
-
-
-
-
-#endif
+int main(int argc, char *argv[]) 
+{
+    ub_log_init("./log/", "unittest.", 0x10000000, 16);
+    testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}
 

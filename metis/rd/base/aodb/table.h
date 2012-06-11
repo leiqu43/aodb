@@ -33,19 +33,40 @@ class Table : boost::noncopyable {
 public:
     //
     // 打开一个Table。
+    //  table_path : 表数据所保存的目录
     //  filename : 表名称
-    //  file_size : 最大表数据文件大小
-    //  create_if_not_exist : 如果表不存在，那么创建。
+    //  file_size : 最大数据文件大小
     //
     //  如果成功，那么*table返回创建成功的表。如果失败，retval < 0
     //
-    static int Open(const std::string& table_name,
+    static int Open(const std::string& table_path, 
+                    const std::string& table_name,
                     uint64_t file_size, 
-                    bool create_if_not_exist,
                     Table **table);
     ~Table();
 
+    //
+    // 从表中获取数据
+    //
+    int Get(const std::string& key, std::string* value);
+
+    //
+    // 写入数据到表中
+    //
+    int Put(const std::string& key, std::string& value);
+
 private:
+
+    // 索引文件句柄
+    FILE *aodb_index_fp_;
+    // 数据文件句柄
+    FILE *aodb_data_fp_;
+
+    explicit Table(FILE *aodb_index_fp, FILE *aodb_data_fp);
+    //
+    // 初始化db
+    //
+    int Initialize();
 };
 
 }
