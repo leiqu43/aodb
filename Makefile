@@ -31,7 +31,7 @@ LIB_PATH=-L$(ULLIB)/lib \
 		 -L$(SNAPPY)/lib/\
 		 -L$(BOOST)/lib/
 
-LIB = -lub -lullib -lnshead -lpthread -lub_misc -lgtest -lprotobuf -lboost_thread
+LIB = -lub -lullib -lnshead -lpthread -lub_misc -lgtest -lprotobuf -lboost_thread -lssl
 
 OBJ=aodb
 
@@ -44,7 +44,7 @@ CPPFLAGS = -g -Wall -W -Winline -Werror  -Wno-unused-parameter   -Wno-unused-fun
 all: $(OBJ)
 	rm -f *.o
 
-unittest: tests/unittest.o
+unittest: tests/unittest.o tests/test_posix_env.o tests/test_table.o table.o 
 	$(GCC) -o $@ $^  $(INCLUDE_PATH) $(LIB_PATH) $(LIB)
 	rm -rf *.o */*.o
 

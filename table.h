@@ -22,9 +22,15 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string>
+#include <map>
+#include <boost/thread/mutex.hpp>
 #include <boost/utility.hpp>
 
+#include "db_format.h"
+
 namespace aodb {
+
+class PosixRandomAccessFile;
 
 //
 // 一个表是由一个(key,value)字典组成，其中一个表包括如下三部分：磁盘文件、磁盘索引，内存索引。
@@ -57,19 +63,29 @@ public:
 
 private:
 
-    // 索引文件句柄
-    FILE *aodb_index_fp_;
-    // 数据文件句柄
-    FILE *aodb_data_fp_;
+    explicit Table(PosixRandomAccessFile *aodb_index_file, PosixRandomAccessFile *aodb_data_file);
 
-    explicit Table(FILE *aodb_index_fp, FILE *aodb_data_fp);
     //
     // 初始化db
     //
     int Initialize();
+
+    //
+    // 更新内存索引
+    //
+    void UpdateIndexDict(const struct aodb_index& aodb_index);
+
+private:
+    // 索引文件
+    PosixRandomAccessFile *aodb_index_file_;
+    // 数据文件
+    PosixRandomAccessFile *aodb_data_file_;
+
+    // aodb内存索引
+    std::map<uint64_t, struct aodb_index> index_dict_;
+    boost::mutex index_dict_lock_;
 };
 
 }
 
 #endif
-
