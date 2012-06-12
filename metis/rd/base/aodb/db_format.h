@@ -28,6 +28,7 @@
 
 namespace aodb {
 
+#pragma pack(push,1)
 //
 // 数据头，数据头后面是具体的key,value数据。
 // 下一条数据偏移为 当前偏移+header_size+key_length+value_length;
@@ -53,8 +54,8 @@ struct aodb_index
     uint64_t block_offset;
     uint32_t block_size;
 };
+#pragma pack(pop)
 
 }
 
 #endif
-
