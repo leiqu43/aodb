@@ -90,6 +90,9 @@ private:
     // 数据文件
     PosixRandomAccessFile *aodb_data_file_;
 
+    // 写数据锁，保证每个时刻只有一个用户写数据
+    boost::mutex table_put_lock_;
+
     // aodb内存索引
     std::map<uint64_t, struct aodb_index> index_dict_;
     boost::mutex index_dict_lock_;

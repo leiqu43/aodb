@@ -88,7 +88,12 @@ Table::Table(PosixRandomAccessFile* aodb_index_file, PosixRandomAccessFile* aodb
 void Table::UpdateIndexDict(const struct aodb_index& aodb_index)
 {
     boost::mutex::scoped_lock index_dict_lock(index_dict_lock_);
-    index_dict_.insert(std::make_pair(aodb_index.key_sign, aodb_index));
+    std::map<uint64_t, struct aodb_index>::iterator iter = index_dict_.find(aodb_index.key_sign);
+    if (iter == index_dict_.end()) {
+        index_dict_.insert(std::make_pair(aodb_index.key_sign, aodb_index));
+    } else {
+        iter->second = aodb_index;
+    }
 }
 
 int Table::GetItemFromIndexDict(const std::string& key, struct aodb_index* aodb_index)
@@ -190,18 +195,21 @@ int Table::Put(const std::string& key, const std::string& value)
     aodb_index.block_offset = aodb_data_file_->FileOffset();
     aodb_index.block_size = data.length();
 
-    int ret = aodb_data_file_->Append(data);
-    if (ret < 0) {
-        UB_LOG_WARNING("PosixRandomAccessFile::Append failed!");
-        return -1;
-    }
+    {
+        boost::mutex::scoped_lock table_put_lock(table_put_lock_);
+        int ret = aodb_data_file_->Append(data);
+        if (ret < 0) {
+            UB_LOG_WARNING("PosixRandomAccessFile::Append failed!");
+            return -1;
+        }
 
-    data.clear();
-    data.append((const char *)(&aodb_index), sizeof(aodb_index));
-    ret = aodb_index_file_->Append(data);
-    if (ret < 0) {
-        UB_LOG_WARNING("PosixRandomAccessFile::Append failed!");
-        return -1;
+        data.clear();
+        data.append((const char *)(&aodb_index), sizeof(aodb_index));
+        ret = aodb_index_file_->Append(data);
+        if (ret < 0) {
+            UB_LOG_WARNING("PosixRandomAccessFile::Append failed!");
+            return -1;
+        }
     }
 
     UpdateIndexDict(aodb_index);
