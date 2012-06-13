@@ -59,7 +59,7 @@ public:
     //
     // 写入数据到表中
     //
-    int Put(const std::string& key, std::string& value);
+    int Put(const std::string& key, const std::string& value);
 
 private:
 
@@ -74,6 +74,15 @@ private:
     // 更新内存索引
     //
     void UpdateIndexDict(const struct aodb_index& aodb_index);
+
+    //
+    // 从索引字典中查询一个item
+    // retval :
+    //      <0  :   失败
+    //      0   :   没有找到
+    //      1  :   成功
+    //
+    int GetItemFromIndexDict(const std::string& key, struct aodb_index* aodb_index);
 
 private:
     // 索引文件

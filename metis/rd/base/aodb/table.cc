@@ -79,7 +79,7 @@ int Table::Open(const std::string& table_path, const std::string& table_name,
 
 Table::Table(PosixRandomAccessFile* aodb_index_file, PosixRandomAccessFile* aodb_data_file) 
         : aodb_index_file_(aodb_index_file),
-          aodb_data_file_(aodb_data_file_)
+          aodb_data_file_(aodb_data_file)
 {
     assert(aodb_index_file_);
     assert(aodb_data_file_);
@@ -89,6 +89,23 @@ void Table::UpdateIndexDict(const struct aodb_index& aodb_index)
 {
     boost::mutex::scoped_lock index_dict_lock(index_dict_lock_);
     index_dict_.insert(std::make_pair(aodb_index.key_sign, aodb_index));
+}
+
+int Table::GetItemFromIndexDict(const std::string& key, struct aodb_index* aodb_index)
+{
+    assert(key.length() > 0);
+    assert(aodb_index);
+
+    uint64_t key_sign = 0;
+    PosixEnv::CalcMd5_64(key, &key_sign);
+
+    boost::mutex::scoped_lock index_dict_lock(index_dict_lock_);
+    std::map<uint64_t, struct aodb_index>::const_iterator iter = index_dict_.find(key_sign);
+    if (iter == index_dict_.end()) {
+        return 0;
+    }
+    *aodb_index = iter->second;
+    return 1;
 }
 
 int Table::Initialize()
@@ -131,11 +148,26 @@ Table::~Table()
 
 int Table::Get(const std::string& key, std::string* value)
 {
-
+    struct aodb_index aodb_index;
+    int ret = GetItemFromIndexDict(key, &aodb_index);
+    if (ret < 0) {
+        UB_LOG_WARNING("GetItemFromIndexDict failed![ret:%d]", ret);
+        return -1;
+    }
+    std::string data;
+    ret = aodb_data_file_->Read(aodb_index.block_offset, aodb_index.block_size, &data);
+    if (ret < 0) {
+        UB_LOG_WARNING("PosixRandomAccessFile::Read failed![ret:%d]", ret);
+        return -1;
+    }
+    struct aodb_data_header *data_header = NULL;
+    data_header = (struct aodb_data_header*)const_cast<char *>(data.c_str());
+    value->clear();
+    value->append(data.c_str() + data_header->header_size + data_header->key_length, data_header->value_length);
     return 0;
 }
 
-int Table::Put(const std::string& key, std::string& value)
+int Table::Put(const std::string& key, const std::string& value)
 {
     struct aodb_data_header data_header;
     memset(static_cast<void*>(&data_header), 0x0, sizeof(data_header));
