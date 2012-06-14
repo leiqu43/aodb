@@ -22,7 +22,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string>
+#include <dirent.h>
 #include <openssl/md5.h>
+#include <vector>
 #include "ub_log.h"
 
 namespace aodb {
@@ -143,16 +145,35 @@ public:
         *low = (uint64_t)buf[8]<<56| (uint64_t)buf[9]<<48 | (uint64_t)buf[10]<<40 | (uint64_t)buf[11]<<32 \
                | (uint64_t)buf[12] << 24 | (uint64_t)buf[13] << 16 | (uint64_t)buf[14] << 8 | (uint64_t)buf[15];
     }
+
     static void CalcMd5_64(const std::string& data, uint64_t* sign) {
         uint64_t high = 0, low = 0;
         CalcMd5(data, &high, &low);
         *sign = high ^ low;
     }
+
     static void CalcMd5_32(const std::string& data, uint32_t* sign) {
         uint64_t sign64 = 0;
         CalcMd5_64(data, &sign64);
         *sign = (sign64 >> 32) ^ (sign64 & 0xffffffff);
     }
+
+    static int GetDirChildren(const std::string& dir,
+                           std::vector<std::string>* result)  {
+        assert(result);
+        result->clear();
+        DIR* d = opendir(dir.c_str());
+        if (d == NULL) {
+            return 0;
+        }   
+        struct dirent* entry = NULL;
+        while ((entry = readdir(d)) != NULL) {
+            result->push_back(entry->d_name);
+        }   
+        closedir(d);
+        return 0;
+    }
+
 private:
 };
 

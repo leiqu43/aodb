@@ -41,13 +41,13 @@ public:
     // 打开一个Table。
     //  table_path : 表数据所保存的目录
     //  filename : 表名称
-    //  file_size : 最大数据文件大小
+    //  max_file_size : 最大数据文件大小
     //
     //  如果成功，那么*table返回创建成功的表。如果失败，retval < 0
     //
     static int Open(const std::string& table_path, 
                     const std::string& table_name,
-                    uint64_t file_size, 
+                    uint64_t max_file_size, 
                     Table **table);
     ~Table();
 
