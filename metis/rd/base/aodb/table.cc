@@ -26,11 +26,11 @@ using namespace aodb;
 
 
 int Table::Open(const std::string& table_path, const std::string& table_name, 
-        uint64_t file_size, Table **table)
+        uint64_t max_file_size, Table **table)
 {
     assert(table_path.length() > 0);
     assert(table_name.length() > 0);
-    assert(file_size > 0);
+    assert(max_file_size > 0);
     assert(table);
     assert(!(*table));
 
@@ -136,6 +136,7 @@ int Table::Initialize()
         }
         UpdateIndexDict(aodb_index);
     }
+    UB_LOG_TRACE("Table::Initialize success![item:%d]", index_item_num);
     return 0;
 }
 
@@ -194,8 +195,21 @@ int Table::Put(const std::string& key, const std::string& value)
     aodb_index.key_sign = data_header.key_sign;
     aodb_index.block_offset = aodb_data_file_->FileOffset();
     aodb_index.block_size = data.length();
+    aodb_index.value_sign = data_header.value_sign;
 
     {
+        // 检查数据是否需要写入
+        struct aodb_index old_aodb_index;
+        int ret = GetItemFromIndexDict(key, &old_aodb_index);
+        if (1 == ret && old_aodb_index.value_sign == aodb_index.value_sign) {
+            UB_LOG_DEBUG("duplicate (key,value), ignore![key:%s][value_sign:%lu]", 
+                         key.c_str(), aodb_index.value_sign);
+            return 0;
+        }
+    }
+
+    {
+        //  写入数据
         boost::mutex::scoped_lock table_put_lock(table_put_lock_);
         int ret = aodb_data_file_->Append(data);
         if (ret < 0) {

@@ -17,6 +17,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <boost/foreach.hpp>
 #include "posix_env.h"
 
 using namespace aodb;
@@ -60,5 +61,14 @@ TEST_F(PosixEnvTest, NewRandomAccessFile) {
 
     delete random_access_file;
     random_access_file = NULL;
+}
+
+TEST_F(PosixEnvTest, GetDirChildren) {
+    std::vector<std::string> result;
+    int ret = PosixEnv::GetDirChildren("./tmp/", &result);
+    ASSERT_EQ(ret, 0);
+    BOOST_FOREACH(const std::string& file, result) {
+        std::cout << file << std::endl;
+    }
 }
 

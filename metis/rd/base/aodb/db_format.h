@@ -53,6 +53,7 @@ struct aodb_index
     uint64_t key_sign;
     uint64_t block_offset;
     uint32_t block_size;
+    uint64_t value_sign;        // 用来避免重复内容重复写入
 };
 #pragma pack(pop)
 

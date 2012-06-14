@@ -21,9 +21,100 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <string>
+#include <list>
+#include <vector>
+#include <boost/shared_ptr.hpp>
+#include <boost/thread/mutex.hpp>
 
+namespace aodb {
 
+class Table;
 
+struct table_info {
+    bool operator() (struct table_info x,struct table_info y) { 
+        if (x.table_year < y.table_year) {
+            return true;
+        }
+        if (x.table_month < y.table_month) {
+            return true;
+        }
+        if (x.table_day < x.table_day) {
+            return true;
+        }
+        return false;
+    }
+    // 创建表的时间
+    int32_t table_year;
+    int32_t table_month;
+    int32_t table_day;
+};
+
+class Db {
+public:
+    //
+    // 打开一个DB
+    // db_path  :   数据文件地址
+    // max_open_table : 最大打开的表个数，保留时间最近的表
+    // devide_table_period : 拆分表的周期【单位为天】
+    // result_db : 打开的db句柄
+    //
+    static int OpenDb(const std::string& db_path, 
+                      int max_open_table, 
+                      int devide_table_period,
+                      Db** result_db);
+
+    virtual ~Db() {
+    }
+
+private:
+    Db(const std::string& db_path, const int max_open_table, 
+       const int devide_table_period) 
+        : db_path_(db_path), 
+          max_open_table_(max_open_table),
+          devide_table_period_(devide_table_period) {
+    }
+
+    // 
+    // 初始化Db
+    //
+    int Initialize();
+
+    //
+    // 扫描符合条件的表，并且按照时间从最近到最旧排序。
+    //
+    int ScanTable(std::vector<std::string>* result_tables);
+
+    //
+    // 获取所有表，包括主表，按照时间段从最近到最旧排序
+    // 注意：得到的所有表只能用来进行读操作。
+    //
+    int GetAllTables(std::vector<boost::shared_ptr<Table> > *result_tables);
+
+    //
+    // 根据表名称得到表的信息
+    // retval:
+    //      <0  :   失败
+    //      0   :   不是表
+    //      1   :   成功
+    //
+    int GetTableInfoFromTableName(const std::string& table_name, struct table_info *result);
+
+private:
+    // 主表，所有写操作都写入此表
+    boost::shared_ptr<Table> primary_table_;
+    boost::mutex primary_table_lock_;
+
+    // 读表，只读
+    std::list<boost::shared_ptr<Table> > tables_list_;
+    boost::mutex tables_list_lock_;
+
+    const std::string db_path_;
+    const int max_open_table_;
+    const int devide_table_period_;
+};
+
+}
 
 #endif
 
