@@ -52,6 +52,13 @@ public:
     ~Table();
 
     //
+    // 得到表名
+    //
+    std::string TableName() {
+        return table_name_;
+    }
+
+    //
     // 从表中获取数据
     //
     int Get(const std::string& key, std::string* value);
@@ -63,7 +70,9 @@ public:
 
 private:
 
-    explicit Table(PosixRandomAccessFile *aodb_index_file, PosixRandomAccessFile *aodb_data_file);
+    explicit Table(const std::string& table_name, 
+                   PosixRandomAccessFile *aodb_index_file, 
+                   PosixRandomAccessFile *aodb_data_file);
 
     //
     // 初始化db
@@ -85,6 +94,7 @@ private:
     int GetItemFromIndexDict(const std::string& key, struct aodb_index* aodb_index);
 
 private:
+    const std::string table_name_;
     // 索引文件
     PosixRandomAccessFile *aodb_index_file_;
     // 数据文件

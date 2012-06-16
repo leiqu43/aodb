@@ -32,22 +32,26 @@ namespace aodb {
 class Table;
 
 struct table_info {
-    bool operator() (struct table_info x,struct table_info y) { 
+    // 创建表的时间
+    int32_t table_year;
+    int32_t table_month;
+    int32_t table_day;
+    int32_t table_hour;
+};
+
+struct table_info_less {
+    bool operator() (struct table_info const& x, struct table_info const& y) { 
         if (x.table_year < y.table_year) {
             return true;
         }
         if (x.table_month < y.table_month) {
             return true;
         }
-        if (x.table_day < x.table_day) {
+        if (x.table_day < y.table_day) {
             return true;
         }
-        return false;
+        return x.table_hour < y.table_hour;
     }
-    // 创建表的时间
-    int32_t table_year;
-    int32_t table_month;
-    int32_t table_day;
 };
 
 class Db {
@@ -67,6 +71,17 @@ public:
     virtual ~Db() {
     }
 
+    //
+    // 从DB中获取数据
+    //
+    int Get(const std::string& key, std::string* value);
+
+    //
+    // 写入数据到DB中
+    //
+    int Put(const std::string& key, const std::string& value);
+
+
 private:
     Db(const std::string& db_path, const int max_open_table, 
        const int devide_table_period) 
@@ -84,6 +99,11 @@ private:
     // 扫描符合条件的表，并且按照时间从最近到最旧排序。
     //
     int ScanTable(std::vector<std::string>* result_tables);
+
+    //
+    // 加载指定的tables。
+    //
+    int LoadTables(const std::vector<std::string>& tables);
 
     //
     // 获取所有表，包括主表，按照时间段从最近到最旧排序

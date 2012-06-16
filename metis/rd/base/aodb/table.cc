@@ -30,7 +30,7 @@ int Table::Open(const std::string& table_path, const std::string& table_name,
 {
     assert(table_path.length() > 0);
     assert(table_name.length() > 0);
-    assert(max_file_size > 0);
+    //assert(max_file_size >= 0);
     assert(table);
     assert(!(*table));
 
@@ -62,7 +62,7 @@ int Table::Open(const std::string& table_path, const std::string& table_name,
         return -1;
     }
 
-    *table = new Table(aodb_index_file, aodb_data_file);
+    *table = new Table(table_name, aodb_index_file, aodb_data_file);
     assert(*table);
 
     ret = (*table)->Initialize();
@@ -77,8 +77,10 @@ int Table::Open(const std::string& table_path, const std::string& table_name,
     return 0;
 }
 
-Table::Table(PosixRandomAccessFile* aodb_index_file, PosixRandomAccessFile* aodb_data_file) 
-        : aodb_index_file_(aodb_index_file),
+Table::Table(const std::string& table_name, PosixRandomAccessFile* aodb_index_file, 
+             PosixRandomAccessFile* aodb_data_file) 
+        : table_name_(table_name),
+          aodb_index_file_(aodb_index_file),
           aodb_data_file_(aodb_data_file)
 {
     assert(aodb_index_file_);
@@ -159,6 +161,10 @@ int Table::Get(const std::string& key, std::string* value)
     if (ret < 0) {
         UB_LOG_WARNING("GetItemFromIndexDict failed![ret:%d]", ret);
         return -1;
+    }
+    value->clear();
+    if (0 == ret) {
+        return 0;
     }
     std::string data;
     ret = aodb_data_file_->Read(aodb_index.block_offset, aodb_index.block_size, &data);
