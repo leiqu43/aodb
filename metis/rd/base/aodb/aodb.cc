@@ -22,6 +22,9 @@
 #include "aodb_data.h"
 #include "aodb_imp.h"
 
+#define  DEF_CONF_DIR   "./conf/"
+#define  DEF_CONF_FILE  (PROJECT_NAME ".conf")
+
 // 全局配置信息
 aodb_conf_t g_conf;
 // 全局数据
@@ -102,6 +105,9 @@ static int serv_loadconf(const char *dir, const char *file, int build)
 	UB_CONF_GETUINT(conf, "reqbuf_size", &g_conf.reqbuf_size, "请求buffer的长");
 	UB_CONF_GETUINT(conf, "resbuf_size", &g_conf.resbuf_size, "应答buffer的长");
 
+	UB_CONF_GETNSTR(conf, "db_path", g_conf.db_path, sizeof(g_conf.db_path), "db数据所在目录");
+	UB_CONF_GETUINT(conf, "max_open_table", &g_conf.max_open_table, "最多能打开的表的数量");
+	UB_CONF_GETUINT(conf, "devide_table_period", &g_conf.devide_table_period, "分表周期");
     ret = 0;
 out:
 	if (conf) {
@@ -181,14 +187,13 @@ static int serv_init()
 		goto out;
 	}
 
-	ub_server_set_buffer(g_data.aodb_svr, g_conf.aodb.thread_num, NULL,  g_conf.reqbuf_size,
-			NULL, g_conf.resbuf_size);
+	ub_server_set_buffer(g_data.aodb_svr, g_conf.aodb.thread_num, NULL,  
+                         g_conf.reqbuf_size, NULL, g_conf.resbuf_size);
 
 	//使用激进型回调
 	ub_server_set_callback(g_data.aodb_svr, aodb_cmdproc_callback, NULL);
 
     ret = 0;
-
 out:
 	if (ret < 0) {
 		if (g_data.aodb_svr) {
@@ -204,14 +209,11 @@ static int init_thread_data()
     g_data.thread_data = (thread_data_t **)calloc(g_conf.aodb.thread_num, \
             sizeof(void *));
     assert(g_data.thread_data);
-
 	for (uint32_t i=0; i<g_conf.aodb.thread_num; ++i) {
 		g_data.thread_data[i] = (thread_data_t *) calloc(1, sizeof(thread_data_t));
         assert(g_data.thread_data[i]);
     }
-
-	ub_server_set_user_data(g_data.aodb_svr, (void **)g_data.thread_data, \
-            sizeof(thread_data_t));
+	ub_server_set_user_data(g_data.aodb_svr, (void **)g_data.thread_data, sizeof(thread_data_t));
     return 0;
 }
 
@@ -293,6 +295,85 @@ void quit_signal_handler(int signum)
 
 int main(int argc, char *argv[])
 {
+	int ret = 0;
+	int c = 0;
+
+	signal(SIGTERM, quit_signal_handler);
+	signal(SIGINT, quit_signal_handler);
+	signal(SIGQUIT, quit_signal_handler);
+
+	strlcpy(g_conf.conf_dir, DEF_CONF_DIR, PATH_SIZE);
+	strlcpy(g_conf.conf_file, DEF_CONF_FILE, PATH_SIZE);
+
+	while (-1 != (c = getopt(argc, argv, "d:f:gthv"))) {
+		switch (c) {
+			case 'd':
+				snprintf(g_conf.conf_dir, PATH_SIZE, "%s/", optarg);
+				break;
+			case 'f':
+				snprintf(g_conf.conf_file, PATH_SIZE, "%s", optarg);
+				break;
+			case 'v':
+				print_version();
+				return 0;
+			case 'h':
+				print_help();
+				return 0;
+			default:
+				print_help();
+				return 0;
+		}
+	}
+
+	//读取配置文件
+    ret = serv_loadconf(g_conf.conf_dir, g_conf.conf_file, 0);
+    if (ret < 0) {
+        UB_LOG_FATAL("load config [dir:%s file:%s] failed!",
+                g_conf.conf_dir, g_conf.conf_file);
+        goto out;
+    }
+
+    // 初始化服务
+	ret = serv_init();
+	if (0 != ret) {
+		UB_LOG_FATAL("serv_init failed! [ret:%d]", ret);
+		goto out;
+	} else {
+		UB_LOG_FATAL("serv_init success!");
+	}
+
+    // 初始化数据
+    ret = init_data();
+    if (0 != ret) {
+        UB_LOG_FATAL("init_data failed![ret:%d]", ret);
+        goto out;
+    } else {
+        UB_LOG_FATAL("init_data success!");
+    }
+
+    // 初始化其他模块
+    ret = init_module();
+    if (0 != ret) {
+        UB_LOG_FATAL("init_module failed![ret:%d]", ret);
+        goto out;
+    } else {
+        UB_LOG_FATAL("init_module success!");
+    }
+
+	//服务开始啦!!
+	ret = serv_run();
+	if (0 != ret) {
+		UB_LOG_FATAL("serv_start failed! [ret:%d]", ret);
+		goto out;
+	} else {
+		UB_LOG_FATAL("serv_start success!");
+	}
+
+out:
+	//清除工作
+	serv_cleanup();
+	return ret;
+
     return 0;
 }
 

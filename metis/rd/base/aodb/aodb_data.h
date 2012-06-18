@@ -29,22 +29,23 @@
 //
 typedef struct _aodb_conf_t 
 {
-	ub_svr_t aodb;					      /**<   正向aodb的配置信息 */
+	ub_svr_t aodb;					       /**<   正向aodb的配置信息 */
 
-	char conf_dir[PATH_SIZE];			  /**<   配置文件的目录    */
-	char conf_file[PATH_SIZE];			  /**<   配置文件名        */
-	char data_dir[PATH_SIZE];			  /**<   数据文件的根目录  */
+	char conf_dir[PATH_SIZE];			   /**<   配置文件的目录    */
+	char conf_file[PATH_SIZE];			   /**<   配置文件名        */
+	char data_dir[PATH_SIZE];			   /**<   数据文件的根目录  */
 
-	char log_dir[PATH_SIZE];			  /**<   日志文件的根目录  */
-	char log_file[PATH_SIZE];			  /**<   日志文件名        */
-	int log_level;					      /**<   日志级别          */
-	int log_size;					      /**<   日志回滚的大小(M) */
+	char log_dir[PATH_SIZE];			   /**<   日志文件的根目录  */
+	char log_file[PATH_SIZE];			   /**<   日志文件名        */
+	int log_level;					       /**<   日志级别          */
+	int log_size;					       /**<   日志回滚的大小(M) */
 
-	uint32_t reqbuf_size;				  /**<   请求buffer的长度  */
-	uint32_t resbuf_size;				  /**<   应答buffer的长度  */
+	uint32_t reqbuf_size;				   /**<   请求buffer的长度  */
+	uint32_t resbuf_size;				   /**<   应答buffer的长度  */
 
-    int32_t max_open_table;               /**<   最大保留table的个数  */
-    int32_t devide_table_period;          /**<   分表周期，单位为小时 */
+    char db_path[PATH_SIZE];               /**<   db数据所在目录  */
+    uint32_t max_open_table;               /**<   最大保留table的个数  */
+    uint32_t devide_table_period;          /**<   分表周期，单位为小时 */
 } aodb_conf_t;
 
 //
