@@ -92,6 +92,7 @@ int Db::LoadTables(const std::vector<std::string>& tables)
 {
     int ret = -1;
     BOOST_FOREACH(const std::string& table_name, tables) {
+        std::cout << "open table:" << table_name << std::endl;
         Table* table = NULL;
         ret = Table::Open(db_path_, table_name, 0x10000000, &table);
         if (ret < 0) {
@@ -239,6 +240,7 @@ int Db::Put(const std::string& key, const std::string& value)
                 boost::mutex::scoped_lock tables_list_lock(tables_list_lock_);
                 tables_list_.push_front(primary_table_);
                 if ((int)tables_list_.size() > max_open_table_) {
+                    UB_LOG_TRACE("drop olddest table %s", tables_list_.back()->TableName().c_str());
                     tables_list_.pop_back();
                 }
             }

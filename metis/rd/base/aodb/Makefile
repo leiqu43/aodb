@@ -48,7 +48,7 @@ unittest: tests/unittest.o tests/test_posix_env.o tests/test_table.o table.o  te
 	$(GCC) -o $@ $^  $(INCLUDE_PATH) $(LIB_PATH) $(LIB)
 	rm -rf *.o */*.o
 
-$(OBJ) : aodb.o
+$(OBJ) : aodb.o aodb_imp.o
 	$(GCC) -o $@ $^  $(INCLUDE_PATH) $(LIB_PATH) $(LIB)
 
 clean:
@@ -56,3 +56,4 @@ clean:
 
 %.o	: %.cc
 	$(GCC) $(CPPFLAGS) -c $< -o $@ $(INCLUDE_PATH)
+
