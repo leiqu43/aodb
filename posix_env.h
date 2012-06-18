@@ -174,6 +174,14 @@ public:
         return 0;
     }
 
+    static int CreateDir(const std::string& path) {
+        int ret = mkdir(path.c_str(), 0755);
+        if (EEXIST == errno) {
+            return 0;
+        }
+        return ret;
+    }
+
 private:
 };
 

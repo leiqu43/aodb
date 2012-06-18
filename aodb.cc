@@ -34,14 +34,11 @@ aodb_data_t g_data;
  *
  * 打印帮助信息
 **/
-static void
-print_help()
+static void print_help()
 {
 	printf("\t-d:     conf_dir\n");
 	printf("\t-f:     conf_file\n");
 	printf("\t-h:     show this page\n");
-	printf("\t-t:     check config file syntax\n");
-	printf("\t-g:     generate default config file\n");
 	printf("\t-v:     show version infomation\n");
 }
 
@@ -49,8 +46,7 @@ print_help()
  *
  * 打印模块的版本信息
 **/
-static void
-print_version()
+static void print_version()
 {
 	printf("Project    :%s\n", PROJECT_NAME);
 	printf("Version    :%s\n", VERSION);
@@ -373,7 +369,5 @@ out:
 	//清除工作
 	serv_cleanup();
 	return ret;
-
-    return 0;
 }
 

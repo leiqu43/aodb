@@ -45,18 +45,26 @@ inline std::string get_write_table_name(int devide_table_period)
     return buf;
 }
 
-int Db::OpenDb(const std::string& db_path, 
-              int max_open_table, 
-              int devide_table_period,
-              Db** result_db)
+int Db::OpenDb(const std::string& path, 
+               const std::string& db_name,
+               int max_open_table, 
+               int devide_table_period,
+               Db** result_db)
 {
     assert(result_db);
     assert(!*result_db);
 
-    *result_db = new Db(db_path, max_open_table, devide_table_period);
+    const std::string db_path = path + "/" + db_name + "/";
+    int ret = PosixEnv::CreateDir(db_path);
+    if (ret < 0) {
+        UB_LOG_WARNING("PosixEnv::CreateDir failed![ret:%d][path:%s]", ret, db_path.c_str());
+        return -1;
+    }
+
+    *result_db = new Db(db_path, db_name, max_open_table, devide_table_period);
     assert(*result_db);
 
-    int ret = (*result_db)->Initialize();
+    ret = (*result_db)->Initialize();
     if (ret < 0) {
         UB_LOG_WARNING("Db::Initialize failed![ret:%d]", ret);
         delete *result_db;
