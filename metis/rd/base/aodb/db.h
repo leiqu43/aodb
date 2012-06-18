@@ -56,7 +56,8 @@ public:
     // devide_table_period : 拆分表的周期【单位为天】
     // result_db : 打开的db句柄
     //
-    static int OpenDb(const std::string& db_path, 
+    static int OpenDb(const std::string& path, 
+                      const std::string& db_name,
                       int max_open_table, 
                       int devide_table_period,
                       Db** result_db);
@@ -74,11 +75,18 @@ public:
     //
     int Put(const std::string& key, const std::string& value);
 
+    //
+    // 返回db的名称
+    //
+    const std::string& DbName() const {
+        return db_name_;
+    }
 
 private:
-    Db(const std::string& db_path, const int max_open_table, 
+    Db(const std::string& db_path, const std::string& db_name, const int max_open_table, 
        const int devide_table_period) 
         : db_path_(db_path), 
+          db_name_(db_name),
           max_open_table_(max_open_table),
           devide_table_period_(devide_table_period) {
     }
@@ -122,7 +130,10 @@ private:
     std::list<boost::shared_ptr<Table> > tables_list_;
     boost::mutex tables_list_lock_;
 
+    // db路径&名称
     const std::string db_path_;
+    const std::string db_name_;
+
     const int max_open_table_;
     const int devide_table_period_;
 };

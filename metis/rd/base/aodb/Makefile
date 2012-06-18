@@ -42,13 +42,13 @@ CPPFLAGS = -g -Wall -W -Winline -Werror  -Wno-unused-parameter   -Wno-unused-fun
 .PHONY: all clean
 
 all: $(OBJ)
-	rm -f *.o
+	rm -f *.o tests/*.o
 
-unittest: tests/unittest.o tests/test_posix_env.o tests/test_table.o table.o  tests/test_db.o db.o
+unittest: tests/unittest.o tests/test_posix_env.o tests/test_table.o table.o tests/test_db.o db.o db_mgr.o tests/test_db_mgr.o
 	$(GCC) -o $@ $^  $(INCLUDE_PATH) $(LIB_PATH) $(LIB)
 	rm -rf *.o */*.o
 
-$(OBJ) : aodb.o aodb_imp.o
+$(OBJ) : aodb.o aodb_imp.o db_imp.o ../../search/include/mdb.pb.o
 	$(GCC) -o $@ $^  $(INCLUDE_PATH) $(LIB_PATH) $(LIB)
 
 clean:
