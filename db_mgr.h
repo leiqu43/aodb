@@ -51,14 +51,16 @@ public:
     //
     // 根据db_name得到db，如果不存在，那么创建此db。
     //
-    Db* GetDb(const std::string& db_name);
+    Db* GetDb(const std::string& db_name, bool new_if_not_exist=false);
 
 private:
     DbMgr();
     virtual ~DbMgr();
 
-    // 扫描db_path下面所有的db。
-    int ScanDb(); 
+    //
+    // 添加一个db
+    //
+    Db* AddDb(const std::string& db_name);
 
 private:
     // db列表。
@@ -69,8 +71,6 @@ private:
 
     // DbMgr锁
     boost::mutex lock_;
-    // 是否关闭DbMgr
-    bool shutdown_;
 
     // db所在的目录
     std::string db_path_;
@@ -81,4 +81,5 @@ private:
     static DbMgr* instance_;
     static boost::mutex instance_lock_;
 };
+}
 

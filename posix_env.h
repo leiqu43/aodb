@@ -159,7 +159,8 @@ public:
     }
 
     static int GetDirChildren(const std::string& dir,
-                           std::vector<std::string>* result)  {
+                           std::vector<std::string>* result,
+                           uint8_t d_type_filter=0)  {
         assert(result);
         result->clear();
         DIR* d = opendir(dir.c_str());
@@ -168,6 +169,8 @@ public:
         }   
         struct dirent* entry = NULL;
         while ((entry = readdir(d)) != NULL) {
+            if (entry->d_name[0] == '.') continue;  // 去掉临时文件以及".",".."目录
+            if (d_type_filter != 0 && entry->d_type != d_type_filter) continue;
             result->push_back(entry->d_name);
         }   
         closedir(d);
@@ -181,8 +184,6 @@ public:
         }
         return ret;
     }
-
-private:
 };
 
 }
