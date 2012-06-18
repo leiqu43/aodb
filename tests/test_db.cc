@@ -40,12 +40,18 @@ TEST_F(DbTest, Open) {
     db = NULL;
 }
 
-TEST_F(DbTest, Get) {
+TEST_F(DbTest, Put) {
     Db *db = NULL;
     int ret = Db::OpenDb("./tmp/", 3, 1, &db);
     ASSERT_EQ(ret, 0);
 
     ret = db->Put("hello", "hello,world!");
+    ASSERT_EQ(ret, 0);
+}
+
+TEST_F(DbTest, Get) {
+    Db *db = NULL;
+    int ret = Db::OpenDb("./tmp/", 3, 1, &db);
     ASSERT_EQ(ret, 0);
 
     std::string data;
@@ -57,6 +63,7 @@ TEST_F(DbTest, Get) {
     db = NULL;
 }
 
+#if 0
 TEST_F(DbTest, PressureTest) {
     Db *db = NULL;
     int ret = Db::OpenDb("./tmp/", 7, 1, &db);
@@ -66,7 +73,6 @@ TEST_F(DbTest, PressureTest) {
     for (int i=0; i<32*1024; ++i) {
         data.append("hello,world");
     }
-#if 0
     char buf[32] = "\0";
     for (int i=0; i<10000; ++i) {
         snprintf(buf, sizeof(buf), "%d", i);
@@ -74,7 +80,6 @@ TEST_F(DbTest, PressureTest) {
         ASSERT_EQ(ret, 0);
         sleep(1);
     }
-#endif
     char buf[32] = "\0";
     for (int i=0; i<10000; ++i) {
         snprintf(buf, sizeof(buf), "%d", i);
@@ -86,4 +91,5 @@ TEST_F(DbTest, PressureTest) {
     delete db;
     db = NULL;
 }
+#endif
 

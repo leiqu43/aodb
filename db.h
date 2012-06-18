@@ -41,16 +41,9 @@ struct table_info {
 
 struct table_info_less {
     bool operator() (struct table_info const& x, struct table_info const& y) { 
-        if (x.table_year < y.table_year) {
-            return true;
-        }
-        if (x.table_month < y.table_month) {
-            return true;
-        }
-        if (x.table_day < y.table_day) {
-            return true;
-        }
-        return x.table_hour < y.table_hour;
+        uint64_t x_time = (uint64_t)x.table_year << 48 | (uint64_t)x.table_month << 32 | (uint64_t)x.table_day << 16 | x.table_hour;
+        uint64_t y_time = (uint64_t)y.table_year << 48 | (uint64_t)y.table_month << 32 | (uint64_t)y.table_day << 16 | y.table_hour;
+        return x_time < y_time;
     }
 };
 
