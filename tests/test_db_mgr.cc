@@ -47,4 +47,3 @@ TEST_F(DbMgrTest, GetDb) {
     db = DbMgr::instance()->GetDb("unittest_new", 1);
     ASSERT_TRUE(db);
 }
-

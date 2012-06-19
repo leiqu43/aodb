@@ -23,6 +23,8 @@
 #include <algorithm>
 #include <boost/foreach.hpp>
 #include "ub_log.h"
+#include "snappy.h"
+
 #include "posix_env.h"
 #include "table.h"
 
@@ -207,8 +209,9 @@ int Db::Get(const std::string& key, std::string* value)
         UB_LOG_WARNING("GetAllTables failed![ret:%d]", ret);
         return -1;
     }
-
+//    std::string compressed_data;
     BOOST_FOREACH(boost::shared_ptr<Table> table, tables) {
+        //ret = table->Get(key, &compressed_data);
         ret = table->Get(key, value);
         if (ret < 0) {
             UB_LOG_WARNING("Table::Get failed![ret:%d][table:%s][key:%s]", ret, \
@@ -218,11 +221,15 @@ int Db::Get(const std::string& key, std::string* value)
         if (value->length() > 0) break;
         UB_LOG_DEBUG("Table::Get nothing![key:%s][table:%s]", key.c_str(), table->TableName().c_str());
     }
+    //value->clear();
+    //ub_log_pushnotice("compressed_size","%lu", compressed_data.length());
     if (value->length() > 0) {
+        //snappy::Uncompress(compressed_data.data(), compressed_data.size(), value);
+        //ub_log_pushnotice("real_size", "%lu", value->length());
         UB_LOG_DEBUG("Db::Get success![key:%s][value_size:%ld]", \
                      key.c_str(), value->length());
     } else {
-        UB_LOG_DEBUG("can't find key in tables![key:%s]", key.c_str());
+        UB_LOG_DEBUG("can't find key in tables![tables:%lu][key:%s]", tables.size(), key.c_str());
     }
     return 0;
 }
@@ -231,6 +238,11 @@ int Db::Put(const std::string& key, const std::string& value)
 {
     assert(key.length());
     assert(value.length());
+
+    // 压缩数据
+    //std::string compress_data;
+    //snappy::Compress(value.data(), value.size(), &compress_data);
+    //ub_log_pushnotice("compress_ratio", "%04f", ((float)compress_data.length())/value.length());
 
     // 得到要写入的表名
     std::string write_table_name = get_write_table_name(devide_table_period_);
