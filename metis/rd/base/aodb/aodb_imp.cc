@@ -62,38 +62,28 @@ static void aodb_reset_threaddata(thread_data_t *pthr)
  **/
 int aodb_cmdproc_callback()
 {
-	nshead_t *req_head = NULL;
-	nshead_t *res_head = NULL;
 
-    char *req_buf = NULL;
-    size_t req_buf_size = 0;
-    char *res_buf = NULL;
-    size_t res_buf_size = 0;
+	nshead_t* req_head = (nshead_t *) ub_server_get_read_buf();
+	nshead_t* res_head = (nshead_t *) ub_server_get_write_buf();
 
-    thread_data_t *pthr = NULL;
-    GenericResErr err;
+	char* req_buf = (char *) (req_head + 1);
+	//size_t req_buf_size = ub_server_get_read_size() - sizeof (nshead_t);
+	char* res_buf = (char *) (res_head + 1);
+	size_t res_buf_size = ub_server_get_write_size() - sizeof (nshead_t);
 
-    const cmd_callback_t *callback = NULL;
-	int ret = 0;
-
-	req_head = (nshead_t *) ub_server_get_read_buf();
-	res_head = (nshead_t *) ub_server_get_write_buf();
-
-	req_buf = (char *) (req_head + 1);
-	req_buf_size = ub_server_get_read_size() - sizeof (nshead_t);
-	res_buf = (char *) (res_head + 1);
-	res_buf_size = ub_server_get_write_size() - sizeof (nshead_t);
-
-	pthr = (thread_data_t *) ub_server_get_user_data();
+	thread_data_t* pthr = (thread_data_t *) ub_server_get_user_data();
 	if (NULL == pthr) {
         UB_LOG_WARNING("failed to get thread data!");
         return -1;
 	}
 
+    const cmd_callback_t *callback = NULL;
+    GenericResErr err;
+	int ret = 0;
+
     aodb_reset_threaddata(pthr);
 
 	ub_log_setbasic(UB_LOG_REQSVR, "%s", req_head->provider);
-	//ub_log_setbasic(UB_LOG_SVRNAME, "%s", g_conf.aodb_conf.svr_name);
 
     // 1, 解析请求
     GenericReq req;
@@ -153,17 +143,15 @@ int aodb_cmdproc_callback()
         res.set_body(res_buf, res_body->ByteSize());
     }
 
-    // 4, 返回响应
 failed:
+    // 4, 返回响应
     aodb_reset_res(req_head, res_head);
-
     if (res.ByteSize() > (ssize_t)res_buf_size) {
-        UB_LOG_WARNING("res exceed res buffer size![cur:%d][max:%ld]",\
-                res.ByteSize(), res_buf_size);
+        UB_LOG_WARNING("res exceed res buffer size![cur:%d][max:%ld]",
+                       res.ByteSize(), res_buf_size);
         res.set_err(ERR_INTER);
         res.set_body(NULL);
     }
-
     ret = res.SerializeToArray(res_buf, res_buf_size);
     if (false == ret) {
         UB_LOG_WARNING("failed to serialize response!");
@@ -173,7 +161,7 @@ failed:
         res_head->body_len = res.ByteSize();
         ret = 0;
     }
-
+    ub_log_pushnotice("body_len", "%lu", res_head->body_len);
     ub_log_pushnotice("err", "%d", res.err());
     if (res_body) {
         delete res_body;

@@ -12,6 +12,7 @@ UBLIB=$(WORKROOT)/public/ub/
 PROTOBUF=$(THIRDPATH)/protobuf/
 GTEST=../../lib/gtest-1.5.0/
 BOOST=$(THIRDPATH)/boost/
+SNAPPY=$(THIRDPATH)/snappy/
 
 INCLUDE_PATH=-I$(ULLIB)/include/ \
 			 -I$(NSHEAD) \
@@ -20,6 +21,7 @@ INCLUDE_PATH=-I$(ULLIB)/include/ \
 			 -I$(PROTOBUF)/include \
 			 -I../../search/include\
 			 -I$(BOOST)/include\
+			 -I$(SNAPPY)/include\
 			 -I./ -I../include/
 
 LIB_PATH=-L$(ULLIB)/lib \
@@ -31,7 +33,7 @@ LIB_PATH=-L$(ULLIB)/lib \
 		 -L$(SNAPPY)/lib/\
 		 -L$(BOOST)/lib/
 
-LIB = -lub -lullib -lnshead -lpthread -lub_misc -lgtest -lprotobuf -lboost_thread -lssl
+LIB = -lub -lullib -lnshead -lpthread -lub_misc -lgtest -lprotobuf -lboost_thread -lssl -lsnappy
 
 OBJ=aodb
 
@@ -48,7 +50,7 @@ unittest: tests/unittest.o tests/test_posix_env.o tests/test_table.o table.o tes
 	$(GCC) -o $@ $^  $(INCLUDE_PATH) $(LIB_PATH) $(LIB)
 	rm -rf *.o */*.o
 
-$(OBJ) : aodb.o aodb_imp.o db_imp.o ../../search/include/mdb.pb.o
+$(OBJ) : aodb.o aodb_imp.o db_imp.o ../../search/include/mdb.pb.o db_mgr.o db.o table.o
 	$(GCC) -o $@ $^  $(INCLUDE_PATH) $(LIB_PATH) $(LIB)
 
 clean:

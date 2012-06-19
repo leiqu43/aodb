@@ -25,6 +25,7 @@
 #include <dirent.h>
 #include <openssl/md5.h>
 #include <vector>
+#include <boost/thread/mutex.hpp>
 #include "ub_log.h"
 
 namespace aodb {
@@ -36,17 +37,14 @@ inline size_t min(size_t x, size_t y)
 
 class PosixRandomAccessFile {
 public:
-    const static size_t kRandomAccessBufferSize = 32 * 4096;
+    const static size_t kRandomAccessBufferSize = 128 * 1024;
 
     PosixRandomAccessFile(const std::string& filename, int fd)
         : filename_(filename), fd_(fd) {
-        tmp_buffer_ = static_cast<char *>(malloc(kRandomAccessBufferSize));
-        assert(tmp_buffer_);
     }
 
     virtual ~PosixRandomAccessFile() {
         close(fd_);
-        free(tmp_buffer_);
     }
 
     //
@@ -55,14 +53,15 @@ public:
     int Read(uint64_t offset, size_t n, std::string* result) {
         result->clear();
         size_t total_read = 0;
+        char tmp_buf[kRandomAccessBufferSize] = "\0";
         while (total_read < n) {
-            ssize_t r = pread(fd_, tmp_buffer_, min(n - total_read, kRandomAccessBufferSize), 
+            ssize_t r = pread(fd_, tmp_buf, min(n - total_read, kRandomAccessBufferSize), 
                               offset + total_read);
             if (r <= 0) {
                 UB_LOG_WARNING("pread failed![err:%m][ret:%d]", static_cast<int>(r));
                 return -1;
             }
-            result->append(tmp_buffer_, r);
+            result->append(tmp_buf, r);
             total_read += r;
         }
         assert(total_read == n);
@@ -71,6 +70,7 @@ public:
 
     int Read(uint64_t offset, size_t n, void *result) {
         assert(result);
+        boost::mutex::scoped_lock lock(lock_);
         ssize_t r = pread(fd_, result, n, offset);
         if (r <= 0) {
             UB_LOG_WARNING("pread failed![err:%m]");
@@ -83,15 +83,18 @@ public:
     //
     // 把数据追加写入到文件末尾
     //
-    int Append(const std::string& data) {
+    ssize_t Append(const std::string& data) {
+        boost::mutex::scoped_lock lock(lock_);
         size_t offset = lseek(fd_, 0, SEEK_END);
         ssize_t w = pwrite(fd_, data.c_str(), data.length(), offset);
         if (w < 0) {
             UB_LOG_WARNING("pwrite failed![err:%m][ret:%d]", static_cast<int>(w));
             return -1;
         }
+        UB_LOG_DEBUG("Append data success![offset:%lu][size:%lu][next_offset:%lu]", 
+                     offset, data.size(), offset + data.size());
         assert(static_cast<size_t>(w) == data.length());
-        return 0;
+        return offset;
     }
 
     //
@@ -101,17 +104,10 @@ public:
         return lseek(fd_, 0, SEEK_END);
     }
 
-    //
-    // 返回文件偏移
-    //
-    ssize_t FileOffset() {
-        return FileSize();
-    }
-
 private:
     std::string filename_;
     int fd_;
-    char* tmp_buffer_;
+    boost::mutex lock_;
 };
 
 class PosixEnv {
@@ -123,7 +119,7 @@ public:
                                     PosixRandomAccessFile** result) {
         assert(result);
         assert(!(*result));
-        int fd = open(filename.c_str(), O_CREAT | O_RDWR , 0644);
+        int fd = open(filename.c_str(), O_CREAT | O_RDWR, 0644);
         if (fd < 0) {
             UB_LOG_WARNING("NewRandomAccessFile faild![filename:%s]", filename.c_str());
             *result = NULL;

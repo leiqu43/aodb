@@ -72,3 +72,10 @@ TEST_F(PosixEnvTest, GetDirChildren) {
     }
 }
 
+TEST_F(PosixEnvTest, CalcMd5_64) {
+    uint64_t sign;
+    PosixEnv::CalcMd5_64("123test,hello,world 5078 20120619", &sign);
+    std::cout << sign << std::endl;
+    PosixEnv::CalcMd5_64("322test,hello,world 34 20120619", &sign);
+    std::cout << sign << std::endl;
+}

@@ -18,15 +18,16 @@
 
 #include "db_imp.h"
 #include <string>
-
 #include "mdb.pb.h"
+#include "db_mgr.h"
+#include "db.h"
 
 using namespace std;
 using namespace MdbInterface;
+using namespace aodb;
 
 //
 // 往某个db写入数据。
-//
 //
 GenericResErr aodb_put(GenericReq *req, google::protobuf::Message **res_msg, thread_data_t *pthr) 
 {
@@ -45,28 +46,24 @@ GenericResErr aodb_put(GenericReq *req, google::protobuf::Message **res_msg, thr
     ub_log_pushnotice("keys num", "%lu", request.key_value_list_size());
 
     if (request.db_name().size()) {
-        // 默认db批量写入
-        ub_log_pushnotice("default_db", "%s", request.db_name().c_str());
-#if 0
-        WriteBatch write_batch;
-
-        // 根据请求构造WriteBatch
+        Db *db = DbMgr::instance()->GetDb(request.db_name(), true);
+        if (!db) {
+            UB_LOG_WARNING("DbMgr::GetDb failed![db:%s]", request.db_name().c_str());
+            return ERR_INTER;
+        }
         for (int i=0; i<request.key_value_list_size(); ++i) {
             const KeyValuePair *pair = &request.key_value_list(i);
             assert(pair);
-            if (pair->has_db() && pair->db() != request.db_name()) {
-                // 已经指定了db了，并且db名称不是默认的名称
+            if (pair->has_db()) {
                 continue;
             }
-            UB_LOG_DEBUG("[key:%s][value_size:%lu]", pair->key().c_str(), pair->value().size());
-            write_batch.Put(pair->key(), pair->value());
+            ret = db->Put(pair->key(), pair->value());
+            if (ret < 0) {
+                UB_LOG_WARNING("Db::Put failed![ret:%d]", ret);
+                return ERR_INTER;
+            }
+            UB_LOG_DEBUG("put key success![key:%s][value_size:%lu]", pair->key().c_str(), pair->value().size());
         }
-        ret = aodb::DbHandler::Put(request.db_name(), &write_batch, true);
-        if (0 != ret) {
-            UB_LOG_WARNING("DbHandler::Put return failed![err:%d]", ret);
-            return MDB_ERR_TO_INTERFACE_ERR(ret);
-        }
-#endif
     }
 
     for (int i=0; i<request.key_value_list_size(); ++i) {
@@ -75,15 +72,15 @@ GenericResErr aodb_put(GenericReq *req, google::protobuf::Message **res_msg, thr
         if (!pair->has_db()) {
             continue;
         }
-#if 0
-        WriteBatch write_batch;
-        write_batch.Put(pair->key(), pair->value());
-        ret = aodb::DbHandler::Put(pair->db(), &write_batch, true);
-        if (0 != ret) {
-            UB_LOG_WARNING("DbHandler::Put return failed![err:%d]", ret);
-            return MDB_ERR_TO_INTERFACE_ERR(ret);
+        Db *db = DbMgr::instance()->GetDb(pair->db(), true);
+        assert(db);
+        ret = db->Put(pair->key(), pair->value());
+        if (ret < 0) {
+            UB_LOG_WARNING("Db::Put failed![ret:%d]", ret);
+            return ERR_INTER;
         }
-#endif
+        UB_LOG_DEBUG("put key success![db:%s][key:%s][value_size:%lu]", pair->db().c_str(), 
+                     pair->key().c_str(), pair->value().size());
     }
     return ERR_OK;
 }
@@ -94,8 +91,6 @@ GenericResErr aodb_put(GenericReq *req, google::protobuf::Message **res_msg, thr
 //
 GenericResErr aodb_get(GenericReq *req, google::protobuf::Message **res_msg, thread_data_t *pthr) 
 {
-    void *data = NULL;
-    size_t length = 0;
     int ret = -1;
 
     DbGetRequest request;
@@ -105,90 +100,62 @@ GenericResErr aodb_get(GenericReq *req, google::protobuf::Message **res_msg, thr
         return ERR_ARG;
     }
 
-    static int kMaxDataSize = 1024*2024;
-
     DbGetResponse *response = new DbGetResponse();
-    data = malloc(kMaxDataSize);
-    assert(data);
-
-    //
-    // 获取默认db的keys
-    //
+    assert(response);
     if (request.db_name().size()) {
+        Db *db = DbMgr::instance()->GetDb(request.db_name(), false);
+        assert(db);
         for (int i=0; i<request.key_list_size(); ++i) {
-            const char *key = request.key_list(i).c_str();
-
-            length = kMaxDataSize;
-#if 0
-            ret = aodb::DbHandler::Get(request.db_name(), key, data, &length);
-            if (kMDB_ERR_NO_DB == ret) {
-                UB_LOG_WARNING("DbHandler::Get failed, because can't find db![db_name:%s][err:%d]", \
-                        request.db_name().c_str(), ret);
-                goto failed;
-            } else if (ret < 0) {
-                UB_LOG_WARNING("DbHandler::Get failed![err:%d]", ret);
-                goto failed;
+            const std::string& key = request.key_list(i);
+            std::string data;
+            ret = db->Get(key, &data);
+            if (ret < 0) {
+                UB_LOG_WARNING("Db:Get failed![ret:%d][db:%s][key:%s]", ret, 
+                               request.db_name().c_str(), key.c_str());
+                return ERR_INTER;
             }
-#endif
-
-            if (length > 0)  {
+            if (data.length() > 0)  {
                 KeyValuePair *key_value = response->add_key_value_list();
                 assert(key_value);
-
-                key_value->set_key(key);
-                key_value->set_value(data, length);
+                key_value->set_key(key.c_str());
+                key_value->set_value(data);
             } else {
-                response->add_failed_list(key);
+                response->add_failed_list(key.c_str());
             }
-
             UB_LOG_DEBUG("DbHandler::Get success![db_name:%s][key:%s][value_size:%ld]", \
-                    request.db_name().c_str(), key, length);
+                    request.db_name().c_str(), key.c_str(), data.length());
         }
+        db = NULL;
     }
-
-    //
-    // 获取指定db的keys
-    //
     for (int i=0; i<request.db_key_list_size(); ++i) {
-#if 0
         const DbKey &db_key = request.db_key_list(i);
-        length = kMaxDataSize;
-        ret = aodb::DbHandler::Get(db_key.db(), db_key.key(), data, &length);
-        if (kMDB_ERR_NO_DB == ret) {
-            UB_LOG_WARNING("DbHandler::Get failed, because can't find db![db_name:%s][err:%d]", \
-                    db_key.db().c_str(), ret);
-            goto failed;
-        } else if (ret < 0) {
-            UB_LOG_WARNING("DbHandler::Get failed![err:%d]", ret);
-            goto failed;
+        Db *db = DbMgr::instance()->GetDb(db_key.db().c_str(), false);
+        if (!db) {
+            UB_LOG_DEBUG("can't find db![db:%s]", db_key.db().c_str());
+            response->add_failed_list(db_key.key());
+            continue;
         }
-        if (length > 0)  {
+        std::string data;
+        ret = db->Get(db_key.key(), &data);
+        if (ret < 0) {
+            UB_LOG_WARNING("Db::Get failed![ret:%d][db:%s][key:%s]", ret, db_key.db().c_str(), db_key.key().c_str());
+            return ERR_INTER;
+        }
+        if (data.length() > 0)  {
             KeyValuePair *key_value = response->add_key_value_list();
             assert(key_value);
             key_value->set_key(db_key.key());
-            key_value->set_value(data, length);
+            key_value->set_value(data);
         } else {
             response->add_failed_list(db_key.key());
         }
         UB_LOG_DEBUG("DbHandler::Get success![db:%s][key:%s][value_size:%lu]", \
-                db_key.db().c_str(), db_key.key().c_str(), length);
-#endif
+                db_key.db().c_str(), db_key.key().c_str(), data.length());
+        db = NULL;
     }
-
-    assert(data);
-    free(data);
-    data = NULL;
 
     *res_msg = response;
     UB_LOG_DEBUG("aodb_get succes!");
-    return ERR_OK;
-
-    if (data) {
-        free(data);
-        data = NULL;
-    }
-
-//    return MDB_ERR_TO_INTERFACE_ERR(ret);
     return ERR_OK;
 }
 

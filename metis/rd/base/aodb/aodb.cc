@@ -21,6 +21,7 @@
 
 #include "aodb_data.h"
 #include "aodb_imp.h"
+#include "db_mgr.h"
 
 #define  DEF_CONF_DIR   "./conf/"
 #define  DEF_CONF_FILE  (PROJECT_NAME ".conf")
@@ -218,16 +219,13 @@ static int init_thread_data()
 //
 static int init_data() 
 {
-    int ret = -1;
-
     g_data.need_quit = false;
-
-    ret = init_thread_data();
+    int ret = init_thread_data();
     if (0 != ret) {
         UB_LOG_FATAL("init_thread_data failed!");
         return -1;
     }
-
+    UB_LOG_TRACE("init_data success!");
     return 0;
 }
 
@@ -237,6 +235,13 @@ static int init_data()
 //
 static int init_module() 
 {
+    int ret = aodb::DbMgr::instance()->Initialize(g_conf.db_path, g_conf.max_open_table, g_conf.devide_table_period);
+    if (ret < 0) {
+        UB_LOG_WARNING("DbMgr::Initialize failed![db_path:%s][max_open_table:%u][devide_table_period:%u]", 
+                      g_conf.db_path, g_conf.max_open_table, g_conf.devide_table_period);
+        return -1;
+    }
+    UB_LOG_TRACE("init_module success!");
     return 0;
 }
 
@@ -250,17 +255,13 @@ static int init_module()
  **/
 static int serv_run() 
 {
-	int ret = -1;
-
     ub_server_setoptsock(g_data.aodb_svr, UBSVR_NODELAY);
-
 	//aodb·þÎñ
-	ret = ub_server_run(g_data.aodb_svr);
+	int ret = ub_server_run(g_data.aodb_svr);
 	if (0 != ret) {
 		UB_LOG_FATAL("run aodb server failed!");
 		return -1;
 	}
-
 	ub_server_join(g_data.aodb_svr);
 	return 0;
 }
