@@ -209,23 +209,22 @@ int Db::Get(const std::string& key, std::string* value)
         UB_LOG_WARNING("GetAllTables failed![ret:%d]", ret);
         return -1;
     }
-//    std::string compressed_data;
+    std::string compress_data;
     BOOST_FOREACH(boost::shared_ptr<Table> table, tables) {
-        //ret = table->Get(key, &compressed_data);
-        ret = table->Get(key, value);
+        ret = table->Get(key, &compress_data);
         if (ret < 0) {
             UB_LOG_WARNING("Table::Get failed![ret:%d][table:%s][key:%s]", ret, \
                     table->TableName().c_str(), key.c_str());
             return -1;
         }
-        if (value->length() > 0) break;
+        if (compress_data.length() > 0) break;
         UB_LOG_DEBUG("Table::Get nothing![key:%s][table:%s]", key.c_str(), table->TableName().c_str());
     }
-    //value->clear();
-    //ub_log_pushnotice("compressed_size","%lu", compressed_data.length());
-    if (value->length() > 0) {
-        //snappy::Uncompress(compressed_data.data(), compressed_data.size(), value);
-        //ub_log_pushnotice("real_size", "%lu", value->length());
+    value->clear();
+    ub_log_pushnotice("compress_size","%lu", compress_data.length());
+    if (compress_data.length() > 0) {
+        snappy::Uncompress(compress_data.data(), compress_data.size(), value);
+        ub_log_pushnotice("real_size", "%lu", value->length());
         UB_LOG_DEBUG("Db::Get success![key:%s][value_size:%ld]", \
                      key.c_str(), value->length());
     } else {
@@ -240,9 +239,9 @@ int Db::Put(const std::string& key, const std::string& value)
     assert(value.length());
 
     // 压缩数据
-    //std::string compress_data;
-    //snappy::Compress(value.data(), value.size(), &compress_data);
-    //ub_log_pushnotice("compress_ratio", "%04f", ((float)compress_data.length())/value.length());
+    std::string compress_data;
+    snappy::Compress(value.data(), value.size(), &compress_data);
+    ub_log_pushnotice("compress_ratio", "%04f", ((float)compress_data.length())/value.length());
 
     // 得到要写入的表名
     std::string write_table_name = get_write_table_name(devide_table_period_);
@@ -256,7 +255,7 @@ int Db::Put(const std::string& key, const std::string& value)
                 UB_LOG_WARNING("Table::Open failed![ret:%d]", ret);
                 return -1;
             }
-            if (!primary_table_){
+            if (primary_table_){
                 boost::mutex::scoped_lock tables_list_lock(tables_list_lock_);
                 tables_list_.push_front(primary_table_);
                 if ((int)tables_list_.size() > max_open_table_) {
@@ -274,7 +273,7 @@ int Db::Put(const std::string& key, const std::string& value)
         boost::mutex::scoped_lock primary_table_lock(primary_table_lock_);
         write_table = primary_table_;
     }
-    int ret = write_table->Put(key, value);
+    int ret = write_table->Put(key, compress_data);
     if (ret < 0) {
         UB_LOG_WARNING("Table::Put failed![ret:%d][table:%s]", ret, write_table->TableName().c_str());
         return -1;
