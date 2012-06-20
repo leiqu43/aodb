@@ -258,7 +258,7 @@ int Db::Put(const std::string& key, const std::string& value)
             if (primary_table_){
                 boost::mutex::scoped_lock tables_list_lock(tables_list_lock_);
                 tables_list_.push_front(primary_table_);
-                if ((int)tables_list_.size() > max_open_table_) {
+                if ((int)tables_list_.size() >= max_open_table_) {
                     UB_LOG_TRACE("drop olddest table %s", tables_list_.back()->TableName().c_str());
                     tables_list_.pop_back();
                 }
