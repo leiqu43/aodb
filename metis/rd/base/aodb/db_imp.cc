@@ -104,7 +104,10 @@ GenericResErr aodb_get(GenericReq *req, google::protobuf::Message **res_msg, thr
     assert(response);
     if (request.db_name().size()) {
         Db *db = DbMgr::instance()->GetDb(request.db_name(), false);
-        assert(db);
+        if (!db) {
+            UB_LOG_WARNING("can't find db:%s", request.db_name().c_str());
+            return ERR_INTER;
+        }
         for (int i=0; i<request.key_list_size(); ++i) {
             const std::string& key = request.key_list(i);
             std::string data;

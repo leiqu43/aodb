@@ -185,9 +185,11 @@ int Db::GetAllTables(std::vector<boost::shared_ptr<Table> > *result_tables)
     assert(result_tables);
 
     result_tables->clear();
-    boost::mutex::scoped_lock primary_table_lock(primary_table_lock_);
-    if (primary_table_) {
-        result_tables->push_back(primary_table_);
+    {
+        boost::mutex::scoped_lock primary_table_lock(primary_table_lock_);
+        if (primary_table_) {
+            result_tables->push_back(primary_table_);
+        }
     }
     {
         boost::mutex::scoped_lock tables_list_lock(tables_list_lock_);
@@ -221,7 +223,6 @@ int Db::Get(const std::string& key, std::string* value)
         UB_LOG_DEBUG("Table::Get nothing![key:%s][table:%s]", key.c_str(), table->TableName().c_str());
     }
     value->clear();
-    ub_log_pushnotice("compress_size","%lu", compress_data.length());
     if (compress_data.length() > 0) {
         snappy::Uncompress(compress_data.data(), compress_data.size(), value);
         ub_log_pushnotice("real_size", "%lu", value->length());
@@ -278,6 +279,7 @@ int Db::Put(const std::string& key, const std::string& value)
         UB_LOG_WARNING("Table::Put failed![ret:%d][table:%s]", ret, write_table->TableName().c_str());
         return -1;
     }
+    UB_LOG_DEBUG("Db::Put success![key:%s][value_size:%lu]", key.c_str(), value.length());
     return 0;
 }
 
