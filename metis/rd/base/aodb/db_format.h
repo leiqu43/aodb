@@ -36,13 +36,8 @@ namespace aodb {
 struct aodb_data_header
 {
     uint32_t magic_num;
-    uint16_t header_size;
-    uint8_t version;
-    uint8_t status;
     uint32_t key_length;
     uint32_t value_length;
-    uint64_t key_sign;
-    uint64_t value_sign;
 };
 
 //
@@ -51,9 +46,11 @@ struct aodb_data_header
 struct aodb_index
 {
     uint64_t key_sign;
-    int64_t block_offset;
-    int32_t block_size;
-    uint64_t value_sign;        // 用来避免重复内容重复写入
+    uint64_t block_offset:48;
+    uint64_t padding:16;
+    bool operator<(struct aodb_index y) const {
+        return this->key_sign < y.key_sign;
+    }
 };
 //#pragma pack(pop)
 

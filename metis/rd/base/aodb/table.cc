@@ -17,6 +17,8 @@
  */
 
 #include "table.h"
+#include <algorithm>
+#include <boost/foreach.hpp>
 
 #include "ub_log.h"
 #include "posix_env.h"
@@ -24,16 +26,18 @@
 
 using namespace aodb;
 
-
-int Table::Open(const std::string& table_path, const std::string& table_name, 
-        uint64_t max_file_size, Table **table)
+int Table::Open(const std::string& table_path, 
+                const std::string& table_name, 
+                uint64_t max_file_size, 
+                bool read_only,
+                Table **table)
 {
     assert(table_path.length() > 0);
     assert(table_name.length() > 0);
-    //assert(max_file_size >= 0);
     assert(table);
     assert(!(*table));
 
+    // 临时索引文件
     std::string table_index_file_path;
     table_index_file_path.append(table_path);
     table_index_file_path.append("/");
@@ -62,7 +66,7 @@ int Table::Open(const std::string& table_path, const std::string& table_name,
         return -1;
     }
 
-    *table = new Table(table_name, aodb_index_file, aodb_data_file);
+    *table = new Table(table_name, aodb_index_file, aodb_data_file, read_only);
     assert(*table);
 
     ret = (*table)->Initialize();
@@ -77,31 +81,50 @@ int Table::Open(const std::string& table_path, const std::string& table_name,
     return 0;
 }
 
-Table::Table(const std::string& table_name, PosixRandomAccessFile* aodb_index_file, 
-             PosixRandomAccessFile* aodb_data_file) 
+Table::Table(const std::string& table_name, 
+             PosixRandomAccessFile* aodb_index_file, 
+             PosixRandomAccessFile* aodb_data_file, 
+             bool read_only) 
         : table_name_(table_name),
           aodb_index_file_(aodb_index_file),
-          aodb_data_file_(aodb_data_file)
+          aodb_data_file_(aodb_data_file),
+          read_only_(read_only),
+          in_sorting_(false)
 {
+    assert(table_name.length() > 0);
     assert(aodb_index_file_);
     assert(aodb_data_file_);
 }
 
+Table::~Table()
+{
+    if (aodb_index_file_) {
+        delete aodb_index_file_;
+        aodb_index_file_ = NULL;
+    }
+    if (aodb_data_file_) {
+        delete aodb_data_file_;
+        aodb_data_file_ = NULL;
+    }
+}
+
 void Table::UpdateIndexDict(const struct aodb_index& aodb_index)
 {
+    assert(!read_only_);
+
     boost::mutex::scoped_lock index_dict_lock(index_dict_lock_);
     std::map<uint64_t, struct aodb_index>::iterator iter = index_dict_.find(aodb_index.key_sign);
     if (iter == index_dict_.end()) {
         index_dict_.insert(std::make_pair(aodb_index.key_sign, aodb_index));
-        UB_LOG_DEBUG("UpdateIndexDict new![key_sign:%lu][value_sign:%lu]", aodb_index.key_sign, aodb_index.value_sign);
+        UB_LOG_DEBUG("UpdateIndexDict new![key_sign:%lu]", aodb_index.key_sign);
     } else {
         assert(aodb_index.key_sign == iter->second.key_sign);
         iter->second = aodb_index;
-        UB_LOG_DEBUG("UpdateIndexDict update![key_sign:%lu][value_sign:%lu]", aodb_index.key_sign, aodb_index.value_sign);
+        UB_LOG_DEBUG("UpdateIndexDict update![key_sign:%lu]", aodb_index.key_sign);
     }
 }
 
-int Table::GetItemFromIndexDict(const std::string& key, struct aodb_index* aodb_index)
+int Table::GetIndex(const std::string& key, struct aodb_index* aodb_index)
 {
     assert(key.length() > 0);
     assert(aodb_index);
@@ -109,12 +132,30 @@ int Table::GetItemFromIndexDict(const std::string& key, struct aodb_index* aodb_
     uint64_t key_sign = 0;
     PosixEnv::CalcMd5_64(key, &key_sign);
     ub_log_pushnotice("key_sign", "%lu", key_sign);
-    boost::mutex::scoped_lock index_dict_lock(index_dict_lock_);
-    std::map<uint64_t, struct aodb_index>::const_iterator iter = index_dict_.find(key_sign);
-    if (iter == index_dict_.end()) {
-        return 0;
+    // 如果只读，而且in_sorting_为true，那么此时index_dict_还是可读的。
+    if (read_only_) {
+        // binary search
+        struct aodb_index value;
+        value.key_sign = key_sign;
+        std::vector<struct aodb_index>::const_iterator iter = 
+            std::lower_bound(sorted_index_array_.begin(), 
+                             sorted_index_array_.end(),
+                             value);
+        if (iter == sorted_index_array_.end()) {
+            UB_LOG_DEBUG("got nothing![read_only:true][key_sign:%lx]", key_sign);
+            return 0;
+        }
+        *aodb_index = *iter;
+        return 1;
+    } else {
+        boost::mutex::scoped_lock index_dict_lock(index_dict_lock_);
+        std::map<uint64_t, struct aodb_index>::const_iterator iter = index_dict_.find(key_sign);
+        if (iter == index_dict_.end()) {
+            UB_LOG_DEBUG("got nothing![read_only:false][key_sign:%lx]", key_sign);
+            return 0;
+        }
+        *aodb_index = iter->second;
     }
-    *aodb_index = iter->second;
     assert(key_sign == aodb_index->key_sign);
     return 1;
 }
@@ -142,102 +183,125 @@ int Table::Initialize()
         }
         UpdateIndexDict(aodb_index);
     }
+    if (read_only_) {
+        SortIndex();
+        index_dict_.clear();
+    }
     UB_LOG_TRACE("Table::Initialize success![item:%d]", index_item_num);
     return 0;
 }
 
-Table::~Table()
+void Table::SortIndex() 
 {
-    if (aodb_index_file_) {
-        delete aodb_index_file_;
-        aodb_index_file_ = NULL;
+    assert(0 == sorted_index_array_.size());
+
+    sorted_index_array_.reserve(index_dict_.size());
+    typedef std::map<uint64_t, struct aodb_index> aodb_index_dict_t;
+    BOOST_FOREACH(const aodb_index_dict_t::value_type& pair, 
+                  index_dict_) {
+        sorted_index_array_.push_back(pair.second);
     }
-    if (aodb_data_file_) {
-        delete aodb_data_file_;
-        aodb_data_file_ = NULL;
-    }
+    // 上面给出的结果应该是有序的(std::map的实现相关)，std::sort再确认一下。
+    std::sort(sorted_index_array_.begin(), sorted_index_array_.end());
 }
+
 
 int Table::Get(const std::string& key, std::string* value)
 {
+    assert(0 != key.length());
+    assert(0 == value->length());
+
+    // 查找索引
     struct aodb_index aodb_index;
-    int ret = GetItemFromIndexDict(key, &aodb_index);
+    int ret = GetIndex(key, &aodb_index);
     if (ret < 0) {
-        UB_LOG_WARNING("GetItemFromIndexDict failed![ret:%d]", ret);
+        UB_LOG_WARNING("GetIndex failed![ret:%d]", ret);
         return -1;
     }
-    value->clear();
     if (0 == ret) {
+        UB_LOG_DEBUG("get nothing![key:%s]", key.c_str());
         return 0;
     }
 
-    std::string data;
-    ret = aodb_data_file_->Read(aodb_index.block_offset, aodb_index.block_size, &data);
+    // 读取数据头
+    aodb_data_header header;
+    ret = aodb_data_file_->Read(aodb_index.block_offset, sizeof(header), &header);
     if (ret < 0) {
-        UB_LOG_WARNING("PosixRandomAccessFile::Read failed![ret:%d]", ret);
+        UB_LOG_WARNING("PosixRandomAccessFile::Read header failed![ret:%d]", ret);
         return -1;
     }
-    struct aodb_data_header *data_header = NULL;
-    data_header = (struct aodb_data_header*)const_cast<char *>(data.c_str());
-    assert(data_header->key_sign == aodb_index.key_sign);
-    value->append(data.c_str() + data_header->header_size + data_header->key_length, data_header->value_length);
-    uint64_t value_sign;
-    PosixEnv::CalcMd5_64(*value, &value_sign);
-    UB_LOG_DEBUG("Table::Get![key:%s][value_sign:%lu][actual_value_size:%lu][block_offset:%lu]", key.c_str(), 
-                 data_header->value_sign, value_sign, aodb_index.block_offset);
-    assert(value_sign == data_header->value_sign);
-    return 0;
+
+    // 检查数据头
+    assert(header.magic_num == MAGIC_NUM);
+
+    // 读value
+    ret = aodb_data_file_->Read(aodb_index.block_offset + sizeof(header) + header.key_length, \
+                                header.value_length, value);
+    if (ret < 0) {
+        UB_LOG_WARNING("PosixRandomAccessFile::Read failed![ret:%d][size:%u]", ret, header.value_length);
+        return -1;
+    }
+    assert(header.value_length == value->length());
+    UB_LOG_DEBUG("Table::Read success![key:%s][value_size:%ld]", key.c_str(), value->length());
+    return 1;
 }
 
 int Table::Put(const std::string& key, const std::string& value)
 {
+    // MarkAsReadOnly后，就不能Put了，这个应该是上层来控制的。
+    assert(!read_only_);
+    assert(!in_sorting_);
+
     struct aodb_data_header data_header;
-    memset(static_cast<void*>(&data_header), 0x0, sizeof(data_header));
     data_header.magic_num = MAGIC_NUM;
-    data_header.header_size = sizeof(struct aodb_data_header);
-    data_header.version = 1;
-    data_header.status = 0;
     data_header.key_length = key.length();
     data_header.value_length = value.length();
-    PosixEnv::CalcMd5_64(key, &data_header.key_sign);
-    PosixEnv::CalcMd5_64(value, &data_header.value_sign);
 
     std::string data;
-    data.append((const char *)(&data_header), sizeof(aodb_data_header));
+    data.reserve(sizeof(data_header) + key.length() + value.length());
+    data.append(reinterpret_cast<char*>(&data_header), sizeof(data_header));
     data.append(key);
     data.append(value);
 
-    struct aodb_index aodb_index;
-    aodb_index.key_sign = data_header.key_sign;
-    aodb_index.block_size = data.length();
-    aodb_index.value_sign = data_header.value_sign;
-
-    {
-        boost::mutex::scoped_lock table_put_lock(table_put_lock_);
-        // 检查数据是否需要写入
-        struct aodb_index old_aodb_index;
-        int ret = GetItemFromIndexDict(key, &old_aodb_index);
-        if (1 == ret && old_aodb_index.value_sign == aodb_index.value_sign) {
-            UB_LOG_DEBUG("duplicate (key,value), ignore![key:%s][value_sign:%lu]", 
-                         key.c_str(), aodb_index.value_sign);
-            return 0;
-        }
-        //  写入数据
-        aodb_index.block_offset = aodb_data_file_->Append(data);
-        if (aodb_index.block_offset < 0) {
-            UB_LOG_WARNING("PosixRandomAccessFile::Append failed!");
-            return -1;
-        }
-        data.clear();
-        data.append((const char *)(&aodb_index), sizeof(aodb_index));
-        ssize_t offset = aodb_index_file_->Append(data);
-        if (offset < 0) {
-            UB_LOG_WARNING("PosixRandomAccessFile::Append failed!");
-            return -1;
-        }
-        UpdateIndexDict(aodb_index);
+    boost::mutex::scoped_lock table_put_lock(table_put_lock_);
+    //  写入数据
+    ssize_t offset = aodb_data_file_->Append(data);
+    if (offset < 0) {
+        UB_LOG_WARNING("PosixRandomAccessFile::Append failed![ret:%ld]", offset);
+        return -1;
     }
-    UB_LOG_DEBUG("Table::Put[key:%s][value_sign:%lu][block_offset:%lu]", key.c_str(), data_header.value_sign, aodb_index.block_offset);
+
+    // 写入索引
+    struct aodb_index aodb_index;
+    PosixEnv::CalcMd5_64(key, &aodb_index.key_sign);
+    aodb_index.block_offset = offset;
+    aodb_index.padding = 0x0;
+
+    offset = aodb_index_file_->Append(reinterpret_cast<char*>(&aodb_index), \
+                                      sizeof(aodb_index));
+    if (-1 == offset) {
+        UB_LOG_WARNING("PosixRandomAccessFile::Append failed!");
+        return -1;
+    }
+    UpdateIndexDict(aodb_index);
+    UB_LOG_DEBUG("Table::Put[key:%s][block_offset:%lu][value_length:%ld]", 
+            key.c_str(), aodb_index.block_offset, value.length());
     return 0;
+}
+
+void Table::MarkAsReadOnly()
+{
+    assert(!read_only_);
+    assert(!in_sorting_);
+
+    // 注意，不应该影响正常的服务
+    in_sorting_ = true;
+    SortIndex();
+    {
+        boost::mutex::scoped_lock index_dict_lock(index_dict_lock_);
+        index_dict_.clear();
+        read_only_ = true;
+    }
+    in_sorting_ = false;
 }
 
