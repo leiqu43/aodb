@@ -110,8 +110,6 @@ Table::~Table()
 
 void Table::UpdateIndexDict(const struct aodb_index& aodb_index)
 {
-    assert(!read_only_);
-
     boost::mutex::scoped_lock index_dict_lock(index_dict_lock_);
     std::map<uint64_t, struct aodb_index>::iterator iter = index_dict_.find(aodb_index.key_sign);
     if (iter == index_dict_.end()) {
@@ -204,7 +202,6 @@ void Table::SortIndex()
     // 上面给出的结果应该是有序的(std::map的实现相关)，std::sort再确认一下。
     std::sort(sorted_index_array_.begin(), sorted_index_array_.end());
 }
-
 
 int Table::Get(const std::string& key, std::string* value)
 {

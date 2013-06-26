@@ -69,7 +69,7 @@ TEST_F(TableTest, Put) {
     table = NULL;
 
     // 重新打开
-    ret = Table::Open("./tmp/", "test_table", 0x10000000, false, &table);
+    ret = Table::Open("./tmp/", "test_table", 0x10000000, true, &table);
     ASSERT_EQ(ret, 0);
     ASSERT_TRUE(table);
 
@@ -107,6 +107,23 @@ TEST_F(TableTest, PressureTest) {
         ASSERT_EQ(ret, 1);
         ASSERT_EQ(data, data_read);
     }
+
+    // 重复写入
+    for(int i=0; i<10000; ++i) {
+        snprintf(key, sizeof(key), "alskfjalj%d%d", i, i);
+        ret = table->Put(key, data);
+        ASSERT_EQ(ret, 0);
+    }
+
+    for (int i=0; i<10000; ++i) {
+        int id = rand() % 10000;
+        snprintf(key, sizeof(key), "alskfjalj%d%d", id, id);
+        std::string data_read;
+        ret = table->Get(key, &data_read);
+        ASSERT_EQ(ret, 1);
+        ASSERT_EQ(data, data_read);
+    }
+
 
     table->MarkAsReadOnly();
 
