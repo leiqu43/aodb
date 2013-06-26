@@ -83,7 +83,9 @@ public:
     }
 
 private:
-    Db(const std::string& db_path, const std::string& db_name, const int max_open_table, 
+    Db(const std::string& db_path, 
+       const std::string& db_name, 
+       const int max_open_table, 
        const int devide_table_period) 
         : db_path_(db_path), 
           db_name_(db_name),

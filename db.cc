@@ -102,9 +102,9 @@ int Db::LoadTables(const std::vector<std::string>& tables)
 {
     int ret = -1;
     BOOST_FOREACH(const std::string& table_name, tables) {
-        std::cout << "open table:" << table_name << std::endl;
+        // TODO 如何决定一个table是不是read only的？
         Table* table = NULL;
-        ret = Table::Open(db_path_, table_name, 0x10000000, &table);
+        ret = Table::Open(db_path_, table_name, 0x10000000, true, &table);
         if (ret < 0) {
             UB_LOG_WARNING("Table::Open failed![ret:%d][table:%s]", ret, table_name.c_str());
             return -1;
@@ -251,7 +251,7 @@ int Db::Put(const std::string& key, const std::string& value)
         if (!primary_table_ || (primary_table_->TableName() != write_table_name)) {
             // 创建新的表
             Table* table = NULL;
-            int ret = Table::Open(db_path_, write_table_name, 0x0, &table);
+            int ret = Table::Open(db_path_, write_table_name, 0x0, false, &table);
             if (ret < 0) {
                 UB_LOG_WARNING("Table::Open failed![ret:%d]", ret);
                 return -1;

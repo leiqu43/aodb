@@ -45,6 +45,14 @@ GenericResErr aodb_put(GenericReq *req, google::protobuf::Message **res_msg, thr
 
     ub_log_pushnotice("keys num", "%lu", request.key_value_list_size());
 
+    for (int i=0; i<request.key_value_list_size(); ++i) {
+        const KeyValuePair *pair = &request.key_value_list(i);
+        if (0 == pair->key().length() || 0 == pair->value().length()) {
+            UB_LOG_DEBUG("invalid request!");
+            return ERR_ARG;
+        }
+    }
+
     if (request.db_name().size()) {
         Db *db = DbMgr::instance()->GetDb(request.db_name(), true);
         if (!db) {

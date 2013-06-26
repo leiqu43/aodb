@@ -84,16 +84,20 @@ public:
     // 把数据追加写入到文件末尾
     //
     ssize_t Append(const std::string& data) {
+        return Append(data.c_str(), data.length());
+    }
+
+    ssize_t Append(const void* data, size_t size) {
         boost::mutex::scoped_lock lock(lock_);
         size_t offset = lseek(fd_, 0, SEEK_END);
-        ssize_t w = pwrite(fd_, data.c_str(), data.length(), offset);
+        ssize_t w = pwrite(fd_, data, size, offset);
         if (w < 0) {
             UB_LOG_WARNING("pwrite failed![err:%m][ret:%d]", static_cast<int>(w));
             return -1;
         }
         UB_LOG_DEBUG("Append data success![offset:%lu][size:%lu][next_offset:%lu]", 
-                     offset, data.size(), offset + data.size());
-        assert(static_cast<size_t>(w) == data.length());
+                     offset, size, offset + size);
+        assert(static_cast<size_t>(w) == size);
         return offset;
     }
 

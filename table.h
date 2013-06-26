@@ -21,6 +21,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <vector>
 #include <string>
 #include <map>
 #include <boost/thread/mutex.hpp>
@@ -33,7 +34,7 @@ namespace aodb {
 class PosixRandomAccessFile;
 
 //
-// 一个表是由一个(key,value)字典组成，其中一个表包括如下三部分：磁盘文件、磁盘索引，内存索引。
+// 一个表是由一个(key,value)字典组成，其中一个表包括如下三部分：磁盘文件、磁盘索引，内存索引(map or sorted array)。
 //
 class Table : boost::noncopyable {
 public:
@@ -42,12 +43,14 @@ public:
     //  table_path : 表数据所保存的目录
     //  filename : 表名称
     //  max_file_size : 最大数据文件大小
+    //  read_only : 是否只读
     //
     //  如果成功，那么*table返回创建成功的表。如果失败，retval < 0
     //
     static int Open(const std::string& table_path, 
                     const std::string& table_name,
                     uint64_t max_file_size, 
+                    bool read_only,
                     Table **table);
     ~Table();
 
@@ -68,11 +71,17 @@ public:
     //
     int Put(const std::string& key, const std::string& value);
 
+    //
+    // 标记为只读
+    //
+    void MarkAsReadOnly();
+
 private:
 
     explicit Table(const std::string& table_name, 
                    PosixRandomAccessFile *aodb_index_file, 
-                   PosixRandomAccessFile *aodb_data_file);
+                   PosixRandomAccessFile *aodb_data_file,
+                   bool read_only);
 
     //
     // 初始化db
@@ -85,13 +94,15 @@ private:
     void UpdateIndexDict(const struct aodb_index& aodb_index);
 
     //
-    // 从索引字典中查询一个item
+    // 从索引中查询一个item
     // retval :
     //      <0  :   失败
     //      0   :   没有找到
     //      1  :   成功
     //
-    int GetItemFromIndexDict(const std::string& key, struct aodb_index* aodb_index);
+    int GetIndex(const std::string& key, struct aodb_index* aodb_index);
+
+    void SortIndex();
 
 private:
     const std::string table_name_;
@@ -100,12 +111,21 @@ private:
     // 数据文件
     PosixRandomAccessFile *aodb_data_file_;
 
-    // 写数据锁，保证每个时刻只有一个用户写数据
-    boost::mutex table_put_lock_;
-
     // aodb内存索引
     std::map<uint64_t, struct aodb_index> index_dict_;
     boost::mutex index_dict_lock_;
+
+    // read only sorted index
+    std::vector<struct aodb_index> sorted_index_array_;
+
+    // 写数据锁，保证每个时刻只有一个用户写数据
+    boost::mutex table_put_lock_;
+
+    // 是否是只读的
+    bool read_only_;
+
+    // 是否正在排序中
+    bool in_sorting_;
 };
 
 }
