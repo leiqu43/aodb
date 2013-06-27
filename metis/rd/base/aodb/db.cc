@@ -22,6 +22,7 @@
 #include <iostream>
 #include <algorithm>
 #include <boost/foreach.hpp>
+#include <boost/thread.hpp>
 #include "ub_log.h"
 #include "snappy.h"
 
@@ -50,6 +51,7 @@ inline std::string get_write_table_name(int devide_table_period)
 int Db::OpenDb(const std::string& path, 
                const std::string& db_name,
                int max_open_table, 
+               uint32_t max_table_size, 
                int devide_table_period,
                Db** result_db)
 {
@@ -63,7 +65,7 @@ int Db::OpenDb(const std::string& path,
         return -1;
     }
 
-    *result_db = new Db(db_path, db_name, max_open_table, devide_table_period);
+    *result_db = new Db(db_path, db_name, max_open_table, max_table_size, devide_table_period);
     assert(*result_db);
 
     ret = (*result_db)->Initialize();
@@ -101,14 +103,19 @@ int Db::Initialize()
 int Db::LoadTables(const std::vector<std::string>& tables)
 {
     int ret = -1;
+    bool first_table = true;
     BOOST_FOREACH(const std::string& table_name, tables) {
-        // TODO 如何决定一个table是不是read only的？
         Table* table = NULL;
-        ret = Table::Open(db_path_, table_name, 0x10000000, true, &table);
+        ret = Table::Open(db_path_, 
+                          table_name, 
+                          max_table_size_, 
+                          first_table ? false : true, 
+                          &table);
         if (ret < 0) {
             UB_LOG_WARNING("Table::Open failed![ret:%d][table:%s]", ret, table_name.c_str());
             return -1;
         }
+        first_table = false;
         {
             boost::mutex::scoped_lock primary_table_lock(primary_table_lock_);
             if (NULL == primary_table_) {
@@ -200,6 +207,33 @@ int Db::GetAllTables(std::vector<boost::shared_ptr<Table> > *result_tables)
     return 0;
 }
 
+int Db::NewTableWithTableLock()
+{
+    // 开辟新的table
+    if (primary_table_) {
+        boost::mutex::scoped_lock tables_list_lock(tables_list_lock_);
+        tables_list_.push_front(primary_table_);
+        if ((int)tables_list_.size() >= max_open_table_) {
+            UB_LOG_TRACE("drop olddest table %s", tables_list_.back()->TableName().c_str());
+            tables_list_.pop_back();
+        }
+        primary_table_->RunBgThread();
+    }
+
+    char table_name[64] = "\0";
+    snprintf(table_name, sizeof(table_name), "%d", (int)time(NULL));
+
+    Table* table = NULL;
+    int ret = Table::Open(db_path_, table_name, max_table_size_, false, &table);
+    if (ret < 0) {
+        UB_LOG_WARNING("Table::Open failed![ret:%d]", ret);
+        return -1;
+    }
+
+    primary_table_ = boost::shared_ptr<Table>(table);
+    return 0;
+}
+
 int Db::Get(const std::string& key, std::string* value)
 {
     assert(key.length());
@@ -211,6 +245,7 @@ int Db::Get(const std::string& key, std::string* value)
         UB_LOG_WARNING("GetAllTables failed![ret:%d]", ret);
         return -1;
     }
+
     std::string compress_data;
     BOOST_FOREACH(boost::shared_ptr<Table> table, tables) {
         ret = table->Get(key, &compress_data);
@@ -228,6 +263,7 @@ int Db::Get(const std::string& key, std::string* value)
         ub_log_pushnotice("real_size", "%lu", value->length());
         UB_LOG_DEBUG("Db::Get success![key:%s][value_size:%ld]", \
                      key.c_str(), value->length());
+        return 1;
     } else {
         UB_LOG_DEBUG("can't find key in tables![tables:%lu][key:%s]", tables.size(), key.c_str());
     }
@@ -244,42 +280,27 @@ int Db::Put(const std::string& key, const std::string& value)
     snappy::Compress(value.data(), value.size(), &compress_data);
     ub_log_pushnotice("compress_ratio", "%04f", ((float)compress_data.length())/value.length());
 
-    // 得到要写入的表名
-    std::string write_table_name = get_write_table_name(devide_table_period_);
-    {
+    int ret = -1;
+
+    while (true) {
         boost::mutex::scoped_lock primary_table_lock(primary_table_lock_);
-        if (!primary_table_ || (primary_table_->TableName() != write_table_name)) {
-            // 创建新的表
-            Table* table = NULL;
-            int ret = Table::Open(db_path_, write_table_name, 0x0, false, &table);
+        if (primary_table_ && !primary_table_->CheckFull()) {
+            // 写入数据
+            ret = primary_table_->Put(key, compress_data);
             if (ret < 0) {
-                UB_LOG_WARNING("Table::Open failed![ret:%d]", ret);
+                UB_LOG_WARNING("Table::Put failed![ret:%d][table:%s]", ret, primary_table_->TableName().c_str());
                 return -1;
             }
-            if (primary_table_){
-                boost::mutex::scoped_lock tables_list_lock(tables_list_lock_);
-                tables_list_.push_front(primary_table_);
-                if ((int)tables_list_.size() >= max_open_table_) {
-                    UB_LOG_TRACE("drop olddest table %s", tables_list_.back()->TableName().c_str());
-                    tables_list_.pop_back();
-                }
-            }
-            primary_table_ = boost::shared_ptr<Table>(table);
+            break;
+        }
+        ret = NewTableWithTableLock();
+        if (ret < 0) {
+            UB_LOG_WARNING("NewTableWithTableLock failed!");
+            return -1;
         }
     }
 
-    // 写入数据
-    boost::shared_ptr<Table> write_table;
-    {
-        boost::mutex::scoped_lock primary_table_lock(primary_table_lock_);
-        write_table = primary_table_;
-    }
-    int ret = write_table->Put(key, compress_data);
-    if (ret < 0) {
-        UB_LOG_WARNING("Table::Put failed![ret:%d][table:%s]", ret, write_table->TableName().c_str());
-        return -1;
-    }
     UB_LOG_DEBUG("Db::Put success![key:%s][value_size:%lu]", key.c_str(), value.length());
-    return 0;
+    return 1;
 }
 

@@ -139,4 +139,3 @@ TEST_F(TableTest, PressureTest) {
     delete table;
     table = NULL;
 }
-
