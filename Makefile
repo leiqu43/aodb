@@ -50,7 +50,11 @@ unittest: tests/unittest.o tests/test_posix_env.o tests/test_table.o table.o tes
 	$(GCC) -o $@ $^  $(INCLUDE_PATH) $(LIB_PATH) $(LIB)
 	rm -rf *.o */*.o
 
-test_table_mem_used : tests/test_table_mem_used.o table.o
+test_table: tests/test_table_mem_used.o table.o
+	$(GCC) -o $@ $^  $(INCLUDE_PATH) $(LIB_PATH) $(LIB)
+	rm -rf *.o */*.o
+
+test_db: tests/test_db_mem_used.o db.o table.o
 	$(GCC) -o $@ $^  $(INCLUDE_PATH) $(LIB_PATH) $(LIB)
 	rm -rf *.o */*.o
 

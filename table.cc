@@ -28,7 +28,7 @@ using namespace aodb;
 
 int Table::Open(const std::string& table_path, 
                 const std::string& table_name, 
-                uint64_t max_file_size, 
+                uint32_t max_table_size,
                 bool read_only,
                 Table **table)
 {
@@ -66,7 +66,7 @@ int Table::Open(const std::string& table_path,
         return -1;
     }
 
-    *table = new Table(table_name, aodb_index_file, aodb_data_file, read_only);
+    *table = new Table(table_name, aodb_index_file, aodb_data_file, max_table_size, read_only);
     assert(*table);
 
     ret = (*table)->Initialize();
@@ -84,12 +84,15 @@ int Table::Open(const std::string& table_path,
 Table::Table(const std::string& table_name, 
              PosixRandomAccessFile* aodb_index_file, 
              PosixRandomAccessFile* aodb_data_file, 
+             uint32_t max_table_size,
              bool read_only) 
         : table_name_(table_name),
           aodb_index_file_(aodb_index_file),
           aodb_data_file_(aodb_data_file),
+          max_table_size_(max_table_size),
           read_only_(read_only),
-          in_sorting_(false)
+          in_sorting_(false),
+          bg_thread_(NULL)
 {
     assert(table_name.length() > 0);
     assert(aodb_index_file_);
@@ -98,6 +101,11 @@ Table::Table(const std::string& table_name,
 
 Table::~Table()
 {
+    if (bg_thread_) {
+        bg_thread_->join();
+        delete bg_thread_;
+        bg_thread_ = NULL;
+    }
     if (aodb_index_file_) {
         delete aodb_index_file_;
         aodb_index_file_ = NULL;
@@ -300,5 +308,24 @@ void Table::MarkAsReadOnly()
         read_only_ = true;
     }
     in_sorting_ = false;
+}
+
+void Table::BgThread()
+{
+    ub_log_initthread("table_bg_thread");
+    UB_LOG_WARNING("Thread::BgThread start!");
+    MarkAsReadOnly();
+    UB_LOG_WARNING("Thread::BgThread finish!");
+}
+
+void Table::RunBgThread()
+{
+    // bg thread
+    if (bg_thread_) {
+        delete bg_thread_;
+        bg_thread_ = NULL;
+    }
+    bg_thread_ = new boost::thread(boost::bind(&Table::BgThread, this));
+    assert(bg_thread_);
 }
 

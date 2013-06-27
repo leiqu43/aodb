@@ -24,6 +24,7 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/utility.hpp>
 
@@ -42,6 +43,7 @@ public:
     // 打开一个Table。
     //  table_path : 表数据所保存的目录
     //  filename : 表名称
+    //  max_table_size : 最大表的大小(key数量)
     //  max_file_size : 最大数据文件大小
     //  read_only : 是否只读
     //
@@ -49,7 +51,7 @@ public:
     //
     static int Open(const std::string& table_path, 
                     const std::string& table_name,
-                    uint64_t max_file_size, 
+                    uint32_t max_table_size,
                     bool read_only,
                     Table **table);
     ~Table();
@@ -59,6 +61,19 @@ public:
     //
     std::string TableName() {
         return table_name_;
+    }
+
+    bool CheckFullWithLock() {
+        assert(index_dict_.size() <= max_table_size_);
+        return index_dict_.size() == max_table_size_;
+    }
+
+    //
+    // 是否已经写满了？
+    //
+    bool CheckFull() {
+        boost::mutex::scoped_lock table_put_lock(table_put_lock_);
+        return CheckFullWithLock();
     }
 
     //
@@ -76,11 +91,15 @@ public:
     //
     void MarkAsReadOnly();
 
+    // 启动后台处理线程
+    void RunBgThread();
+
 private:
 
     explicit Table(const std::string& table_name, 
                    PosixRandomAccessFile *aodb_index_file, 
                    PosixRandomAccessFile *aodb_data_file,
+                   uint32_t max_table_size,
                    bool read_only);
 
     //
@@ -104,6 +123,9 @@ private:
 
     void SortIndex();
 
+    // Background thread
+    void BgThread();
+
 private:
     const std::string table_name_;
     // 索引文件
@@ -121,11 +143,16 @@ private:
     // 写数据锁，保证每个时刻只有一个用户写数据
     boost::mutex table_put_lock_;
 
+    // 最大表的大小
+    uint32_t max_table_size_;
+
     // 是否是只读的
     bool read_only_;
 
     // 是否正在排序中
     bool in_sorting_;
+
+    boost::thread* bg_thread_;
 };
 
 }

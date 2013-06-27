@@ -26,6 +26,7 @@
 #include <vector>
 #include <boost/shared_ptr.hpp>
 #include <boost/thread/mutex.hpp>
+#include <boost/thread.hpp>
 
 namespace aodb {
 
@@ -59,6 +60,7 @@ public:
     static int OpenDb(const std::string& path, 
                       const std::string& db_name,
                       int max_open_table, 
+                      uint32_t max_table_size, 
                       int devide_table_period,
                       Db** result_db);
 
@@ -85,11 +87,13 @@ public:
 private:
     Db(const std::string& db_path, 
        const std::string& db_name, 
-       const int max_open_table, 
+       const uint32_t max_open_table, 
+       const uint32_t max_table_size, 
        const int devide_table_period) 
         : db_path_(db_path), 
           db_name_(db_name),
           max_open_table_(max_open_table),
+          max_table_size_(max_table_size),
           devide_table_period_(devide_table_period) {
     }
 
@@ -123,6 +127,8 @@ private:
     //
     int GetTableInfoFromTableName(const std::string& table_name, struct table_info *result);
 
+    int NewTableWithTableLock();
+
 private:
     // 主表，所有写操作都写入此表
     boost::shared_ptr<Table> primary_table_;
@@ -137,6 +143,7 @@ private:
     const std::string db_name_;
 
     const int max_open_table_;
+    const uint32_t max_table_size_;
     const int devide_table_period_;
 };
 
