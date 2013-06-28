@@ -147,11 +147,12 @@ int Table::GetIndex(const std::string& key, struct aodb_index* aodb_index)
             std::lower_bound(sorted_index_array_.begin(), 
                              sorted_index_array_.end(),
                              value);
-        if (iter == sorted_index_array_.end()) {
+        if (iter == sorted_index_array_.end() || iter->key_sign != key_sign) {
             UB_LOG_DEBUG("got nothing![read_only:true][key_sign:%lx]", key_sign);
             return 0;
         }
         *aodb_index = *iter;
+        assert(aodb_index->key_sign == key_sign);
         return 1;
     } else {
         boost::mutex::scoped_lock index_dict_lock(index_dict_lock_);
@@ -161,6 +162,7 @@ int Table::GetIndex(const std::string& key, struct aodb_index* aodb_index)
             return 0;
         }
         *aodb_index = iter->second;
+        assert(aodb_index->key_sign == key_sign);
     }
     assert(key_sign == aodb_index->key_sign);
     return 1;
@@ -218,6 +220,7 @@ int Table::Get(const std::string& key, std::string* value)
 
     // 查找索引
     struct aodb_index aodb_index;
+    PosixEnv::CalcMd5_64(key, &aodb_index.key_sign);
     int ret = GetIndex(key, &aodb_index);
     if (ret < 0) {
         UB_LOG_WARNING("GetIndex failed![ret:%d]", ret);
@@ -238,6 +241,19 @@ int Table::Get(const std::string& key, std::string* value)
 
     // 检查数据头
     assert(header.magic_num == MAGIC_NUM);
+
+    std::string save_key;
+    ret = aodb_data_file_->Read(aodb_index.block_offset + sizeof(header), \
+                                header.key_length, &save_key);
+    if (ret < 0) {
+        UB_LOG_WARNING("PosixRandomAccessFile::Read failed![ret:%d][size:%u]", ret, header.value_length);
+        return -1;
+    }
+    if (save_key != key) {
+        UB_LOG_WARNING("hash conflict![key_sign:%lx][key1:%s][key2:%s]", 
+                       aodb_index.key_sign, key.c_str(), save_key.c_str());
+        return -1;
+    }
 
     // 读value
     ret = aodb_data_file_->Read(aodb_index.block_offset + sizeof(header) + header.key_length, \
@@ -289,8 +305,8 @@ int Table::Put(const std::string& key, const std::string& value)
         return -1;
     }
     UpdateIndexDict(aodb_index);
-    UB_LOG_DEBUG("Table::Put[key:%s][block_offset:%lu][value_length:%ld]", 
-            key.c_str(), aodb_index.block_offset, value.length());
+    UB_LOG_DEBUG("Table::Put[key:%s][key_sign:%lx][block_offset:%lu][value_length:%ld]", 
+            key.c_str(), aodb_index.key_sign, aodb_index.block_offset, value.length());
     return 0;
 }
 

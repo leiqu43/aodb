@@ -33,18 +33,9 @@ namespace aodb {
 class Table;
 
 struct table_info {
-    // 创建表的时间
-    int32_t table_year;
-    int32_t table_month;
-    int32_t table_day;
-    int32_t table_hour;
-};
-
-struct table_info_less {
-    bool operator() (struct table_info const& x, struct table_info const& y) { 
-        uint64_t x_time = (uint64_t)x.table_year << 48 | (uint64_t)x.table_month << 32 | (uint64_t)x.table_day << 16 | x.table_hour;
-        uint64_t y_time = (uint64_t)y.table_year << 48 | (uint64_t)y.table_month << 32 | (uint64_t)y.table_day << 16 | y.table_hour;
-        return x_time < y_time;
+    int32_t table_time;
+    bool operator<(const struct table_info& y) const {
+        return this->table_time < y.table_time;
     }
 };
 
