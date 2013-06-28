@@ -31,20 +31,10 @@
 
 using namespace aodb;
 
-inline std::string get_table_name(const struct table_info& table_info)
+std::string get_table_name(const struct table_info& table_info)
 {
-    char buf[64] = "\0";
-    snprintf(buf, sizeof(buf), "table_%04d_%02d_%02d_%02d", table_info.table_year, 
-            table_info.table_month, table_info.table_day, table_info.table_hour);
-    return buf;
-}
-
-inline std::string get_write_table_name(int devide_table_period)
-{
-    char buf[64] = "\0";
-    time_t table_time = (time(NULL)/(3600*devide_table_period))*(3600*devide_table_period);
-    struct tm result;
-    strftime(buf, sizeof(buf), "table_%Y_%m_%d_%H", localtime_r(&table_time, &result));
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%d", table_info.table_time);
     return buf;
 }
 
@@ -115,6 +105,7 @@ int Db::LoadTables(const std::vector<std::string>& tables)
             UB_LOG_WARNING("Table::Open failed![ret:%d][table:%s]", ret, table_name.c_str());
             return -1;
         }
+        assert(table);
         first_table = false;
         {
             boost::mutex::scoped_lock primary_table_lock(primary_table_lock_);
@@ -168,7 +159,7 @@ int Db::ScanTable(std::vector<std::string>* result_tables)
         tables_info_array.push_back(table_info);
     }
 
-    std::sort(tables_info_array.begin(), tables_info_array.end(), table_info_less());
+    std::sort(tables_info_array.begin(), tables_info_array.end());
     std::reverse(tables_info_array.begin(), tables_info_array.end());
     for (int i=0; i<(int)tables_info_array.size() && i<max_open_table_; ++i) {
         result_tables->push_back(get_table_name(tables_info_array[i]));
@@ -178,9 +169,8 @@ int Db::ScanTable(std::vector<std::string>* result_tables)
 
 int Db::GetTableInfoFromTableName(const std::string& table_name, struct table_info *result)
 {
-    int ret = sscanf(table_name.c_str(), "table_%d_%d_%d_%d.ind", &(result->table_year), 
-                 &(result->table_month), &(result->table_day), &(result->table_hour));
-    if (4 != ret) {
+    int ret = sscanf(table_name.c_str(), "%d.ind", &(result->table_time));
+    if (1 != ret) {
         UB_LOG_DEBUG("can't get table info![table_name:%s]", table_name.c_str());
         return 0;
     }
