@@ -86,19 +86,14 @@ public:
     //
     int Put(const std::string& key, const std::string& value);
 
-    //
-    // 标记为只读
-    //
-    void MarkAsReadOnly();
 
     // 启动后台处理线程
     void RunBgThread();
 
 private:
 
-    explicit Table(const std::string& table_name, 
-                   PosixRandomAccessFile *aodb_index_file, 
-                   PosixRandomAccessFile *aodb_data_file,
+    explicit Table(const std::string& table_path,
+                   const std::string& table_name, 
                    uint32_t max_table_size,
                    bool read_only);
 
@@ -126,12 +121,34 @@ private:
     // Background thread
     void BgThread();
 
+    //
+    // 标记为只读
+    //
+    void MarkAsReadOnly();
+
+    // 保存只读索引
+    int SaveSortedIndex();
+
+    int LoadSortedIndex();
+
+    int LoadTmpIndex();
+
 private:
+    // 表路径&名称
+    const std::string table_path_;
     const std::string table_name_;
+
+    // 索引文件路径
+    std::string index_file_path_;
+    // 临时索引文件路劲
+    std::string tmp_index_file_path_;
+    // 数据文件路径
+    std::string data_file_path_;
+
     // 索引文件
-    PosixRandomAccessFile *aodb_index_file_;
+    PosixRandomAccessFile *tmp_index_file_writer_;
     // 数据文件
-    PosixRandomAccessFile *aodb_data_file_;
+    PosixRandomAccessFile *data_file_reader_writer_;
 
     // aodb内存索引
     std::map<uint64_t, struct aodb_index> index_dict_;

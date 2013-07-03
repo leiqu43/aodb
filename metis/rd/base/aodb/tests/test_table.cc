@@ -82,9 +82,39 @@ TEST_F(TableTest, Put) {
     table = NULL;
 }
 
+TEST_F(TableTest, SaveSortedIndexTest) {
+    Table* table = NULL;
+    int ret = Table::Open("./tmp/", "test_table", 100000, false, &table);
+    ASSERT_EQ(ret, 0);
+    ASSERT_TRUE(table);
+
+    char key[64] = "\0";
+    for(int i=0; i<100000; ++i) {
+        snprintf(key, sizeof(key), "alskfjalj%d%d", i, i);
+        ret = table->Put(key, key);
+        ASSERT_EQ(ret, 0);
+    }
+    table->RunBgThread();
+
+    delete table;
+    table = NULL;
+
+    // 重新只读方式加载数据
+    ret = Table::Open("./tmp/", "test_table", 100000, true, &table);
+    ASSERT_EQ(ret, 0);
+    ASSERT_TRUE(table);
+    for(int i=0; i<100000; ++i) {
+        snprintf(key, sizeof(key), "alskfjalj%d%d", i, i);
+        std::string value;
+        ret = table->Get(key, &value);
+        ASSERT_EQ(ret, 1);
+        ASSERT_EQ(key, value);
+    }
+}
+
 TEST_F(TableTest, PressureTest) {
     Table* table = NULL;
-    int ret = Table::Open("./tmp/", "test_table", 0x10000000, false, &table);
+    int ret = Table::Open("./tmp/", "test_table", 10000, false, &table);
     ASSERT_EQ(ret, 0);
     ASSERT_TRUE(table);
 
@@ -123,9 +153,6 @@ TEST_F(TableTest, PressureTest) {
         ASSERT_EQ(ret, 1);
         ASSERT_EQ(data, data_read);
     }
-
-
-    table->MarkAsReadOnly();
 
     for (int i=0; i<10000; ++i) {
         int id = rand() % 10000;

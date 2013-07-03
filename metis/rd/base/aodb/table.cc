@@ -37,66 +37,35 @@ int Table::Open(const std::string& table_path,
     assert(table);
     assert(!(*table));
 
-    // 临时索引文件
-    std::string table_index_file_path;
-    table_index_file_path.append(table_path);
-    table_index_file_path.append("/");
-    table_index_file_path.append(table_name);
-    table_index_file_path.append(".ind");
 
-    std::string table_data_file_path;
-    table_data_file_path.append(table_path);
-    table_data_file_path.append("/");
-    table_data_file_path.append(table_name);
-    table_data_file_path.append(".data");
-
-    PosixRandomAccessFile *aodb_index_file = NULL;
-    int ret = PosixEnv::NewRandomAccessFile(table_index_file_path, &aodb_index_file);
-    if (ret < 0) {
-        UB_LOG_WARNING("PosixEnv::NewRandomAccessFile failed![ret:%d]", ret);
-        return -1;
-    }
-
-    PosixRandomAccessFile *aodb_data_file = NULL;
-    ret = PosixEnv::NewRandomAccessFile(table_data_file_path, &aodb_data_file);
-    if (ret < 0) {
-        UB_LOG_WARNING("PosixEnv::NewRandomAccessFile failed![ret:%d][file:%s]",
-                        ret, table_data_file_path.c_str());
-        delete aodb_index_file;
-        return -1;
-    }
-
-    *table = new Table(table_name, aodb_index_file, aodb_data_file, max_table_size, read_only);
+    *table = new Table(table_path, table_name, max_table_size, read_only);
     assert(*table);
 
-    ret = (*table)->Initialize();
+    int ret = (*table)->Initialize();
     if (ret < 0) {
         UB_LOG_WARNING("Table::Initialize failed![table:%s][ret:%d]", table_name.c_str(), ret);
         delete *table;
-        delete aodb_index_file;
-        delete aodb_data_file;
         return -1;
     }
     UB_LOG_TRACE("Table::Open success![table:%s]", table_name.c_str());
     return 0;
 }
 
-Table::Table(const std::string& table_name, 
-             PosixRandomAccessFile* aodb_index_file, 
-             PosixRandomAccessFile* aodb_data_file, 
+Table::Table(const std::string& table_path,
+             const std::string& table_name, 
              uint32_t max_table_size,
              bool read_only) 
-        : table_name_(table_name),
-          aodb_index_file_(aodb_index_file),
-          aodb_data_file_(aodb_data_file),
+        : table_path_(table_path),
+          table_name_(table_name),
+          tmp_index_file_writer_(NULL),
+          data_file_reader_writer_(NULL),
           max_table_size_(max_table_size),
           read_only_(read_only),
           in_sorting_(false),
           bg_thread_(NULL)
 {
-    assert(table_name.length() > 0);
-    assert(aodb_index_file_);
-    assert(aodb_data_file_);
+    assert(table_path_.length() > 0);
+    assert(table_name_.length() > 0);
 }
 
 Table::~Table()
@@ -106,15 +75,142 @@ Table::~Table()
         delete bg_thread_;
         bg_thread_ = NULL;
     }
-    if (aodb_index_file_) {
-        delete aodb_index_file_;
-        aodb_index_file_ = NULL;
+    if (tmp_index_file_writer_) {
+        delete tmp_index_file_writer_;
+        tmp_index_file_writer_ = NULL;
     }
-    if (aodb_data_file_) {
-        delete aodb_data_file_;
-        aodb_data_file_ = NULL;
+    if (data_file_reader_writer_) {
+        delete data_file_reader_writer_;
+        data_file_reader_writer_ = NULL;
     }
 }
+
+int Table::LoadSortedIndex()
+{
+    //
+    // TODO 用mmap直接加载到内存效率更高
+    //
+    PosixRandomAccessFile *index_file_reader = NULL;
+    // 加载排序后索引
+    int ret = PosixEnv::NewRandomAccessFile(index_file_path_, &index_file_reader);
+    if (ret < 0) {
+        UB_LOG_WARNING("PosixEnv::NewRandomAccessFile failed![ret:%d]", ret);
+        return -1;
+    }
+
+    ssize_t index_file_size = index_file_reader->FileSize();
+    if (index_file_size < 0) {
+        UB_LOG_WARNING("PosixRandomAccessFile::FileSize failed!");
+        return -1;
+    }
+
+    int index_item_num = index_file_size / sizeof(struct aodb_index);
+    sorted_index_array_.reserve(index_item_num);
+
+    struct aodb_index prev_aodb_index;
+    prev_aodb_index.key_sign = 0x0;
+    for (int i=0; i<index_item_num; ++i) {
+        // 建立内存索引
+        struct aodb_index aodb_index;
+        ret = index_file_reader->Read(i*sizeof(struct aodb_index), sizeof(struct aodb_index), &aodb_index);
+        if (ret < 0) {
+            UB_LOG_WARNING("index_file_reader->Read failed![ret:%d][item:%d]", ret, i);
+            return -1;
+        }
+        assert(prev_aodb_index < aodb_index);
+        prev_aodb_index = aodb_index;
+        sorted_index_array_.push_back(aodb_index);
+    }
+    return 0;
+}
+
+int Table::LoadTmpIndex()
+{
+    // 加载临时索引文件
+    int ret = PosixEnv::NewRandomAccessFile(tmp_index_file_path_, &tmp_index_file_writer_);
+    if (ret < 0) {
+        UB_LOG_WARNING("PosixEnv::NewRandomAccessFile failed![ret:%d]", ret);
+        return -1;
+    }
+
+    ssize_t index_file_size = tmp_index_file_writer_->FileSize();
+    if (index_file_size < 0) {
+        UB_LOG_WARNING("PosixRandomAccessFile::FileSize failed!");
+        return -1;
+    }
+
+    int index_item_num = index_file_size / sizeof(struct aodb_index);
+    for (int i=0; i<index_item_num; ++i) {
+        // 建立内存索引
+        struct aodb_index aodb_index;
+        ret = tmp_index_file_writer_->Read(i*sizeof(struct aodb_index), sizeof(struct aodb_index), &aodb_index);
+        if (ret < 0) {
+            UB_LOG_WARNING("PosixRandomAccessFile::Read failed![ret:%d]", ret);
+            return -1;
+        }
+        UpdateIndexDict(aodb_index);
+    }
+    return 0;
+}
+
+int Table::Initialize()
+{
+    index_file_path_.append(table_path_);
+    index_file_path_.append("/");
+    index_file_path_.append(table_name_);
+    index_file_path_.append(".ind");
+
+    tmp_index_file_path_ = index_file_path_;
+    tmp_index_file_path_.append(".tmp");
+
+    data_file_path_.append(table_path_);
+    data_file_path_.append("/");
+    data_file_path_.append(table_name_);
+    data_file_path_.append(".data");
+
+    int ret = -1;
+
+    // 加载索引
+    if (read_only_) {
+        ret = LoadSortedIndex();
+        if (ret < 0) {
+            UB_LOG_WARNING("LoadSortedIndex failed![ret:%d]", ret);
+            return -1;
+        }
+    } else {
+        ret = LoadTmpIndex();
+        if (ret < 0) {
+            UB_LOG_WARNING("LoadTmpIndex failed![ret:%d]", ret);
+            return -1;
+        }
+    }
+
+    // 加载数据
+    ret = PosixEnv::NewRandomAccessFile(data_file_path_, &data_file_reader_writer_);
+    if (ret < 0) {
+        UB_LOG_WARNING("PosixEnv::NewRandomAccessFile failed![ret:%d][file:%s]",
+                        ret, data_file_path_.c_str());
+        return -1;
+    }
+
+    UB_LOG_TRACE("Table::Initialize success!");
+    return 0;
+}
+
+void Table::SortIndex() 
+{
+    assert(0 == sorted_index_array_.size());
+
+    sorted_index_array_.reserve(index_dict_.size());
+    typedef std::map<uint64_t, struct aodb_index> aodb_index_dict_t;
+    BOOST_FOREACH(const aodb_index_dict_t::value_type& pair, 
+                  index_dict_) {
+        sorted_index_array_.push_back(pair.second);
+    }
+    // 上面给出的结果应该是有序的(std::map的实现相关)，std::sort再确认一下。
+    std::sort(sorted_index_array_.begin(), sorted_index_array_.end());
+}
+
 
 void Table::UpdateIndexDict(const struct aodb_index& aodb_index)
 {
@@ -168,51 +264,6 @@ int Table::GetIndex(const std::string& key, struct aodb_index* aodb_index)
     return 1;
 }
 
-int Table::Initialize()
-{
-    assert(aodb_index_file_);
-    assert(aodb_data_file_);
-
-    int ret = -1;
-    ssize_t index_file_size = aodb_index_file_->FileSize();
-    if (index_file_size < 0) {
-        UB_LOG_WARNING("PosixRandomAccessFile::FileSize failed!");
-        return -1;
-    }
-
-    int index_item_num = index_file_size / sizeof(struct aodb_index);
-    for (int i=0; i<index_item_num; ++i) {
-        // 建立内存索引
-        struct aodb_index aodb_index;
-        ret = aodb_index_file_->Read(i*sizeof(struct aodb_index), sizeof(struct aodb_index), &aodb_index);
-        if (ret < 0) {
-            UB_LOG_WARNING("PosixRandomAccessFile::Read failed![ret:%d]", ret);
-            return -1;
-        }
-        UpdateIndexDict(aodb_index);
-    }
-    if (read_only_) {
-        SortIndex();
-        index_dict_.clear();
-    }
-    UB_LOG_TRACE("Table::Initialize success![item:%d]", index_item_num);
-    return 0;
-}
-
-void Table::SortIndex() 
-{
-    assert(0 == sorted_index_array_.size());
-
-    sorted_index_array_.reserve(index_dict_.size());
-    typedef std::map<uint64_t, struct aodb_index> aodb_index_dict_t;
-    BOOST_FOREACH(const aodb_index_dict_t::value_type& pair, 
-                  index_dict_) {
-        sorted_index_array_.push_back(pair.second);
-    }
-    // 上面给出的结果应该是有序的(std::map的实现相关)，std::sort再确认一下。
-    std::sort(sorted_index_array_.begin(), sorted_index_array_.end());
-}
-
 int Table::Get(const std::string& key, std::string* value)
 {
     assert(0 != key.length());
@@ -233,7 +284,7 @@ int Table::Get(const std::string& key, std::string* value)
 
     // 读取数据头
     aodb_data_header header;
-    ret = aodb_data_file_->Read(aodb_index.block_offset, sizeof(header), &header);
+    ret = data_file_reader_writer_->Read(aodb_index.block_offset, sizeof(header), &header);
     if (ret < 0) {
         UB_LOG_WARNING("PosixRandomAccessFile::Read header failed![ret:%d]", ret);
         return -1;
@@ -243,7 +294,7 @@ int Table::Get(const std::string& key, std::string* value)
     assert(header.magic_num == MAGIC_NUM);
 
     std::string save_key;
-    ret = aodb_data_file_->Read(aodb_index.block_offset + sizeof(header), \
+    ret = data_file_reader_writer_->Read(aodb_index.block_offset + sizeof(header), \
                                 header.key_length, &save_key);
     if (ret < 0) {
         UB_LOG_WARNING("PosixRandomAccessFile::Read failed![ret:%d][size:%u]", ret, header.value_length);
@@ -256,7 +307,7 @@ int Table::Get(const std::string& key, std::string* value)
     }
 
     // 读value
-    ret = aodb_data_file_->Read(aodb_index.block_offset + sizeof(header) + header.key_length, \
+    ret = data_file_reader_writer_->Read(aodb_index.block_offset + sizeof(header) + header.key_length, \
                                 header.value_length, value);
     if (ret < 0) {
         UB_LOG_WARNING("PosixRandomAccessFile::Read failed![ret:%d][size:%u]", ret, header.value_length);
@@ -285,8 +336,10 @@ int Table::Put(const std::string& key, const std::string& value)
     data.append(value);
 
     boost::mutex::scoped_lock table_put_lock(table_put_lock_);
+    assert(index_dict_.size() < max_table_size_);
+
     //  写入数据
-    ssize_t offset = aodb_data_file_->Append(data);
+    ssize_t offset = data_file_reader_writer_->Append(data);
     if (offset < 0) {
         UB_LOG_WARNING("PosixRandomAccessFile::Append failed![ret:%ld]", offset);
         return -1;
@@ -298,7 +351,7 @@ int Table::Put(const std::string& key, const std::string& value)
     aodb_index.block_offset = offset;
     aodb_index.padding = 0x0;
 
-    offset = aodb_index_file_->Append(reinterpret_cast<char*>(&aodb_index), \
+    offset = tmp_index_file_writer_->Append(reinterpret_cast<char*>(&aodb_index), \
                                       sizeof(aodb_index));
     if (-1 == offset) {
         UB_LOG_WARNING("PosixRandomAccessFile::Append failed!");
@@ -326,11 +379,36 @@ void Table::MarkAsReadOnly()
     in_sorting_ = false;
 }
 
+int Table::SaveSortedIndex()
+{
+    PosixRandomAccessFile *aodb_index_file = NULL;
+    int ret = PosixEnv::NewRandomAccessFile(index_file_path_, &aodb_index_file);
+    if (ret < 0) {
+        UB_LOG_WARNING("PosixEnv::NewRandomAccessFile failed![ret:%d][file:%s]", 
+                       ret, index_file_path_.c_str());
+        return -1;
+    }
+    BOOST_FOREACH(struct aodb_index& aodb_index, sorted_index_array_) {
+        aodb_index_file->Append(reinterpret_cast<char*>(&aodb_index), \
+                                      sizeof(aodb_index));
+    }
+
+    // 删除临时索引文件
+    ret = unlink(tmp_index_file_path_.c_str());
+    assert(0 == ret);
+
+    return 0;
+}
+
 void Table::BgThread()
 {
     ub_log_initthread("table_bg_thread");
     UB_LOG_WARNING("Thread::BgThread start!");
     MarkAsReadOnly();
+    int ret = SaveSortedIndex();
+    if (ret < 0) {
+        UB_LOG_FATAL("SaveSortedIndex failed![ret:%d]", ret);
+    }
     UB_LOG_WARNING("Thread::BgThread finish!");
 }
 

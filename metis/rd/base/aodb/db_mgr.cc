@@ -72,7 +72,7 @@ void DbMgr::Release()
 Db* DbMgr::AddDb(const std::string& db_name)
 {
     Db* db = NULL;
-    int ret = Db::OpenDb(db_path_, db_name, db_max_open_table_, db_devide_table_period_, &db);
+    int ret = Db::OpenDb(db_path_, db_name, db_max_open_table_, 10000000, db_devide_table_period_, &db);
     if (ret < 0) {
         UB_LOG_WARNING("Db::OpenDb failed![ret:%d][db_name:%s]", ret, db_name.c_str());
         return NULL;
