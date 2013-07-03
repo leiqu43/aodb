@@ -33,7 +33,7 @@ protected:
 
 TEST_F(DbTest, Open) {
     Db *db = NULL;
-    int ret = Db::OpenDb("./tmp/", "unittest", 3, 1, &db);
+    int ret = Db::OpenDb("./tmp/", "unittest", 3, 0x10000000, 1, &db);
     ASSERT_EQ(ret, 0);
 
     delete db;
@@ -42,21 +42,21 @@ TEST_F(DbTest, Open) {
 
 TEST_F(DbTest, Put) {
     Db *db = NULL;
-    int ret = Db::OpenDb("./tmp/", "unittest", 3, 1, &db);
+    int ret = Db::OpenDb("./tmp/", "unittest", 3, 0x10000000, 1, &db);
     ASSERT_EQ(ret, 0);
 
     ret = db->Put("hello", "hello,world!");
-    ASSERT_EQ(ret, 0);
+    ASSERT_EQ(ret, 1);
 }
 
 TEST_F(DbTest, Get) {
     Db *db = NULL;
-    int ret = Db::OpenDb("./tmp/", "unittest", 3, 1, &db);
+    int ret = Db::OpenDb("./tmp/", "unittest", 3, 0x10000000, 1, &db);
     ASSERT_EQ(ret, 0);
 
     std::string data;
     ret = db->Get("hello", &data);
-    ASSERT_EQ(ret, 0);
+    ASSERT_EQ(ret, 1);
     ASSERT_EQ(data, "hello,world!");
 
     delete db;
@@ -65,7 +65,7 @@ TEST_F(DbTest, Get) {
 
 TEST_F(DbTest, PressureTest) {
     Db *db = NULL;
-    int ret = Db::OpenDb("./tmp/", "unittest", 3, 1, &db);
+    int ret = Db::OpenDb("./tmp/", "unittest", 3, 0x10000000, 1, &db);
     ASSERT_EQ(ret, 0);
 
     std::string data;
@@ -76,13 +76,13 @@ TEST_F(DbTest, PressureTest) {
     for (int i=0; i<1000; ++i) {
         snprintf(buf, sizeof(buf), "%d", i);
         ret = db->Put(buf, data);
-        ASSERT_EQ(ret, 0);
+        ASSERT_EQ(ret, 1);
     }
     for (int i=0; i<1000; ++i) {
         snprintf(buf, sizeof(buf), "%d", i);
         std::string value;
         ret = db->Get(buf, &value);
-        ASSERT_EQ(ret, 0);
+        ASSERT_EQ(ret, 1);
         ASSERT_EQ(data.length(), value.length());
     }
     delete db;
