@@ -121,6 +121,7 @@ int Table::LoadSortedIndex()
         prev_aodb_index = aodb_index;
         sorted_index_array_.push_back(aodb_index);
     }
+    UB_LOG_DEBUG("LoadSortedIndex success![item:%ld]", sorted_index_array_.size());
     return 0;
 }
 
@@ -150,6 +151,7 @@ int Table::LoadTmpIndex()
         }
         UpdateIndexDict(aodb_index);
     }
+    UB_LOG_DEBUG("LoadTmpIndex success![item:%ld]", index_dict_.size());
     return 0;
 }
 
@@ -207,10 +209,9 @@ void Table::SortIndex()
                   index_dict_) {
         sorted_index_array_.push_back(pair.second);
     }
-    // 上面给出的结果应该是有序的(std::map的实现相关)，std::sort再确认一下。
+    // 上面给出的结果应该是有序的(std::map的实现相关)，std::sort再确认一下，如果有序不会消耗时间
     std::sort(sorted_index_array_.begin(), sorted_index_array_.end());
 }
-
 
 void Table::UpdateIndexDict(const struct aodb_index& aodb_index)
 {
@@ -226,6 +227,37 @@ void Table::UpdateIndexDict(const struct aodb_index& aodb_index)
     }
 }
 
+int Table::GetIndexFromSortedIndex(uint64_t key_sign, struct aodb_index* aodb_index)
+{
+    // binary search
+    struct aodb_index value;
+    value.key_sign = key_sign;
+    std::vector<struct aodb_index>::const_iterator iter = 
+        std::lower_bound(sorted_index_array_.begin(), 
+                         sorted_index_array_.end(),
+                         value);
+    if (iter == sorted_index_array_.end() || iter->key_sign != key_sign) {
+        UB_LOG_DEBUG("got nothing![read_only:true][key_sign:%lx]", key_sign);
+        return 0;
+    }
+    *aodb_index = *iter;
+    assert(aodb_index->key_sign == key_sign);
+    return 1;
+}
+
+int Table::GetIndexFromDict(uint64_t key_sign, struct aodb_index* aodb_index)
+{
+    boost::mutex::scoped_lock index_dict_lock(index_dict_lock_);
+    std::map<uint64_t, struct aodb_index>::const_iterator iter = index_dict_.find(key_sign);
+    if (iter == index_dict_.end()) {
+        UB_LOG_DEBUG("got nothing![read_only:false][key_sign:%lx]", key_sign);
+        return 0;
+    }
+    *aodb_index = iter->second;
+    assert(aodb_index->key_sign == key_sign);
+    return 1;
+}
+
 int Table::GetIndex(const std::string& key, struct aodb_index* aodb_index)
 {
     assert(key.length() > 0);
@@ -234,34 +266,11 @@ int Table::GetIndex(const std::string& key, struct aodb_index* aodb_index)
     uint64_t key_sign = 0;
     PosixEnv::CalcMd5_64(key, &key_sign);
     ub_log_pushnotice("key_sign", "%lu", key_sign);
-    // 如果只读，而且in_sorting_为true，那么此时index_dict_还是可读的。
+
     if (read_only_) {
-        // binary search
-        struct aodb_index value;
-        value.key_sign = key_sign;
-        std::vector<struct aodb_index>::const_iterator iter = 
-            std::lower_bound(sorted_index_array_.begin(), 
-                             sorted_index_array_.end(),
-                             value);
-        if (iter == sorted_index_array_.end() || iter->key_sign != key_sign) {
-            UB_LOG_DEBUG("got nothing![read_only:true][key_sign:%lx]", key_sign);
-            return 0;
-        }
-        *aodb_index = *iter;
-        assert(aodb_index->key_sign == key_sign);
-        return 1;
-    } else {
-        boost::mutex::scoped_lock index_dict_lock(index_dict_lock_);
-        std::map<uint64_t, struct aodb_index>::const_iterator iter = index_dict_.find(key_sign);
-        if (iter == index_dict_.end()) {
-            UB_LOG_DEBUG("got nothing![read_only:false][key_sign:%lx]", key_sign);
-            return 0;
-        }
-        *aodb_index = iter->second;
-        assert(aodb_index->key_sign == key_sign);
+        return GetIndexFromSortedIndex(key_sign, aodb_index);
     }
-    assert(key_sign == aodb_index->key_sign);
-    return 1;
+    return GetIndexFromDict(key_sign, aodb_index);
 }
 
 int Table::Get(const std::string& key, std::string* value)
@@ -336,7 +345,7 @@ int Table::Put(const std::string& key, const std::string& value)
     data.append(value);
 
     boost::mutex::scoped_lock table_put_lock(table_put_lock_);
-    assert(index_dict_.size() < max_table_size_);
+    assert(index_dict_.size() <= max_table_size_);
 
     //  写入数据
     ssize_t offset = data_file_reader_writer_->Append(data);
@@ -371,12 +380,11 @@ void Table::MarkAsReadOnly()
     // 注意，不应该影响正常的服务
     in_sorting_ = true;
     SortIndex();
-    {
-        boost::mutex::scoped_lock index_dict_lock(index_dict_lock_);
-        index_dict_.clear();
-        read_only_ = true;
-    }
+    read_only_ = true;
     in_sorting_ = false;
+
+    boost::mutex::scoped_lock index_dict_lock(index_dict_lock_);
+    index_dict_.clear();
 }
 
 int Table::SaveSortedIndex()
@@ -392,11 +400,10 @@ int Table::SaveSortedIndex()
         aodb_index_file->Append(reinterpret_cast<char*>(&aodb_index), \
                                       sizeof(aodb_index));
     }
-
     // 删除临时索引文件
     ret = unlink(tmp_index_file_path_.c_str());
     assert(0 == ret);
-
+    UB_LOG_DEBUG("SaveSortedIndex success!");
     return 0;
 }
 
@@ -412,7 +419,7 @@ void Table::BgThread()
     UB_LOG_WARNING("Thread::BgThread finish!");
 }
 
-void Table::RunBgThread()
+void Table::RunBgWorkThread()
 {
     // bg thread
     if (bg_thread_) {

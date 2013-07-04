@@ -72,7 +72,7 @@ int Db::OpenDb(const std::string& path,
 int Db::Initialize()
 {
     // 扫描符合条件的表
-    std::vector<std::string> tables;
+    std::vector<struct table_info> tables;
     int ret = ScanTable(&tables);
     if (ret < 0) {
         UB_LOG_WARNING("ScanTable failed![ret:%d]", ret);
@@ -90,16 +90,21 @@ int Db::Initialize()
     return 0;
 }
 
-int Db::LoadTables(const std::vector<std::string>& tables)
+int Db::LoadTables(const std::vector<struct table_info>& tables)
 {
     int ret = -1;
     bool first_table = true;
-    BOOST_FOREACH(const std::string& table_name, tables) {
+    BOOST_FOREACH(const struct table_info& table_info, tables) {
+        std::string table_name = get_table_name(table_info);
+        if (!table_info.read_only && !first_table) {
+            UB_LOG_WARNING("not first table and not read only![name:%s]", table_name.c_str());
+            return -1;
+        }
         Table* table = NULL;
         ret = Table::Open(db_path_, 
                           table_name, 
                           max_table_size_, 
-                          first_table ? false : true, 
+                          table_info.read_only,
                           &table);
         if (ret < 0) {
             UB_LOG_WARNING("Table::Open failed![ret:%d][table:%s]", ret, table_name.c_str());
@@ -111,7 +116,7 @@ int Db::LoadTables(const std::vector<std::string>& tables)
             boost::mutex::scoped_lock primary_table_lock(primary_table_lock_);
             if (NULL == primary_table_) {
                 primary_table_ = boost::shared_ptr<Table>(table);
-                UB_LOG_DEBUG("use table %s as primary table!", table_name.c_str());
+                UB_LOG_TRACE("use table %s as primary table!", table_name.c_str());
                 continue;
             }
         }
@@ -125,7 +130,7 @@ int Db::LoadTables(const std::vector<std::string>& tables)
     return 0;
 }
 
-int Db::ScanTable(std::vector<std::string>* result_tables)
+int Db::ScanTable(std::vector<struct table_info>* result_tables)
 {
     assert(result_tables);
     result_tables->clear();
@@ -145,7 +150,11 @@ int Db::ScanTable(std::vector<std::string>* result_tables)
     BOOST_FOREACH(const std::string& file, files) {
         // 表名称：table_yyyy_mm_dd，例如table_20120614
         struct table_info table_info;
-        if (file.length() <=4 || file.substr(file.length()-3, 3) != "ind") {
+        if (file.length() > 4 && file.substr(file.length()-4, 4) == ".ind") {
+            table_info.read_only = true;
+        } else if(file.length() > 8 && file.substr(file.length()-8, 8) == ".ind.tmp") {
+            table_info.read_only = false;
+        } else {
             continue;
         }
         ret = GetTableInfoFromTableName(file, &table_info);
@@ -162,7 +171,8 @@ int Db::ScanTable(std::vector<std::string>* result_tables)
     std::sort(tables_info_array.begin(), tables_info_array.end());
     std::reverse(tables_info_array.begin(), tables_info_array.end());
     for (int i=0; i<(int)tables_info_array.size() && i<max_open_table_; ++i) {
-        result_tables->push_back(get_table_name(tables_info_array[i]));
+        result_tables->push_back(tables_info_array[i]);
+        //result_tables->push_back(get_table_name(tables_info_array[i]));
     }
     return 0;
 }
@@ -205,9 +215,9 @@ int Db::NewTableWithTableLock()
         tables_list_.push_front(primary_table_);
         if ((int)tables_list_.size() >= max_open_table_) {
             UB_LOG_TRACE("drop olddest table %s", tables_list_.back()->TableName().c_str());
-            tables_list_.pop_back();
+            tables_list_.pop_back();    // 析构的时间会不会很长？让bg thread处理？
         }
-        primary_table_->RunBgThread();
+        primary_table_->RunBgWorkThread();
     }
 
     char table_name[64] = "\0";
