@@ -34,6 +34,7 @@ class Table;
 
 struct table_info {
     int32_t table_time;
+    bool read_only;
     bool operator<(const struct table_info& y) const {
         return this->table_time < y.table_time;
     }
@@ -96,12 +97,12 @@ private:
     //
     // 扫描符合条件的表，并且按照时间从最近到最旧排序。
     //
-    int ScanTable(std::vector<std::string>* result_tables);
+    int ScanTable(std::vector<struct table_info>* tables);
 
     //
     // 加载指定的tables。
     //
-    int LoadTables(const std::vector<std::string>& tables);
+    int LoadTables(const std::vector<struct table_info>& tables);
 
     //
     // 获取所有表，包括主表，按照时间段从最近到最旧排序

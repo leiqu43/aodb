@@ -47,6 +47,9 @@ TEST_F(DbTest, Put) {
 
     ret = db->Put("hello", "hello,world!");
     ASSERT_EQ(ret, 1);
+
+    delete db;
+    db = NULL;
 }
 
 TEST_F(DbTest, Get) {

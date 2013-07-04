@@ -88,7 +88,7 @@ public:
 
 
     // 启动后台处理线程
-    void RunBgThread();
+    void RunBgWorkThread();
 
 private:
 
@@ -129,9 +129,17 @@ private:
     // 保存只读索引
     int SaveSortedIndex();
 
+    // 加载自读索引
     int LoadSortedIndex();
 
+    // 加载未排序索引数据
     int LoadTmpIndex();
+
+    // 从dict中查找索引
+    int GetIndexFromDict(uint64_t key_sign, struct aodb_index* aodb_index);
+
+    // 从只读索引中查找
+    int GetIndexFromSortedIndex(uint64_t key_sign, struct aodb_index* aodb_index);
 
 private:
     // 表路径&名称
