@@ -6,12 +6,13 @@
  *    Description:  
  *
  *        Version:  1.0
- *        Created:  06/14/2012 02:06:46 PM
+ *        Created:  06/14/2013 02:06:46 PM
  *       Revision:  none
  *       Compiler:  gcc
  *
- *         Author:  zbz (), zhoubaozhou@gmail.com
+ *         Author:  qulei (), leiqu43@gmail.com
  *        Company:  
+ *
  *
  * =====================================================================================
  */
