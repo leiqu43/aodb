@@ -44,11 +44,11 @@ struct table_info {
 class Db {
 public:
     //
-    // 打开一个DB
-    // db_path  :   数据文件地址
-    // max_open_table : 最大打开的表个数，保留时间最近的表
-    // devide_table_period : 拆分表的周期【单位为天】
-    // result_db : 打开的db句柄
+    // Open one db
+    // db_path  :   db path
+    // max_open_table : max open table number
+    // devide_table_period : divide table period(day)
+    // result_db : db handlers
     //
     static int OpenDb(const std::string& path, 
                       const std::string& db_name,
@@ -61,17 +61,17 @@ public:
     }
 
     //
-    // 从DB中获取数据
+    // get data from DB
     //
     int Get(const std::string& key, std::string* value);
 
     //
-    // 写入数据到DB中
+    // Put data into DB
     //
     int Put(const std::string& key, const std::string& value);
 
     //
-    // 返回db的名称
+    // Return DB name
     //
     const std::string& DbName() const {
         return db_name_;
@@ -91,47 +91,42 @@ private:
     }
 
     // 
-    // 初始化Db
+    // Init DB
     //
     int Initialize();
 
     //
-    // 扫描符合条件的表，并且按照时间从最近到最旧排序。
+    // Scan table and ordered by time
     //
     int ScanTable(std::vector<struct table_info>* tables);
 
     //
-    // 加载指定的tables。
+    // load tables
     //
     int LoadTables(const std::vector<struct table_info>& tables);
 
     //
-    // 获取所有表，包括主表，按照时间段从最近到最旧排序
-    // 注意：得到的所有表只能用来进行读操作。
+    // load all tables
     //
     int GetAllTables(std::vector<boost::shared_ptr<Table> > *result_tables);
 
     //
-    // 根据表名称得到表的信息
-    // retval:
-    //      <0  :   失败
-    //      0   :   不是表
-    //      1   :   成功
+    // Get Table Info
     //
     int GetTableInfoFromTableName(const std::string& table_name, struct table_info *result);
 
     int NewTableWithTableLock();
 
 private:
-    // 主表，所有写操作都写入此表
+    // Main Table
     boost::shared_ptr<Table> primary_table_;
     boost::mutex primary_table_lock_;
 
-    // 读表，只读
+    // Read Table
     std::list<boost::shared_ptr<Table> > tables_list_;
     boost::mutex tables_list_lock_;
 
-    // db路径&名称
+    // DB path & name
     const std::string db_path_;
     const std::string db_name_;
 
