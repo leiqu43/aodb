@@ -27,14 +27,14 @@
 #define  DEF_CONF_DIR   "./conf/"
 #define  DEF_CONF_FILE  (PROJECT_NAME ".conf")
 
-// 全局配置信息
+//global config data
 aodb_conf_t g_conf;
-// 全局数据
+//global data
 aodb_data_t g_data;
 
 /**
  *
- * 打印帮助信息
+ * print help
 **/
 static void print_help()
 {
@@ -46,7 +46,7 @@ static void print_help()
 
 /**
  *
- * 打印模块的版本信息
+ * print version
 **/
 static void print_version()
 {
@@ -56,22 +56,18 @@ static void print_version()
 
 /**
  *
- * 读取配置文件,同时初始化log信息
+ * Load conf info
  *
- * @param dir 配置的目录
- * @param file 配置的文件名
- * @param build 工作方式: 0表示读取配置;其它值表示生成配置文件
+ * @param dir dir for config file
+ * @param file config file name
+ * @param build 0-read 1-create
  *
  * @return
- *       0  : 成功
- *       -1 : 失败
+ *       0  : success
+ *       -1 : fail
 **/
 static int serv_loadconf(const char *dir, const char *file, int build)
 {
-	/**!! 读取配置文件
-	 *  配置文件应避免使用默认值,容易出问题.建议所有的配置项都从文件中读取
-	 *  一些值的范围建议配置在.range文件中
-	 **/
 
 	int ret = 0;
 
@@ -81,12 +77,12 @@ static int serv_loadconf(const char *dir, const char *file, int build)
 		return -1;
 	}
 
-	//日志相关信息
-	UB_CONF_GETNSTR(conf, "log_dir", g_conf.log_dir, sizeof(g_conf.log_dir), "日志文件目录");
-	UB_CONF_GETNSTR(conf, "log_file", g_conf.log_file, sizeof(g_conf.log_file), "日志文件名");
-	UB_CONF_GETINT(conf, "log_size", &g_conf.log_size, "日志回滚大小(M)");
-	UB_CONF_GETINT(conf, "log_level", &g_conf.log_level, "日志级别");
-	//打开日志
+	//log info
+	UB_CONF_GETNSTR(conf, "log_dir", g_conf.log_dir, sizeof(g_conf.log_dir), "logdir");
+	UB_CONF_GETNSTR(conf, "log_file", g_conf.log_file, sizeof(g_conf.log_file), "logname");
+	UB_CONF_GETINT(conf, "log_size", &g_conf.log_size, "rollbacksize(M)");
+	UB_CONF_GETINT(conf, "log_level", &g_conf.log_level, "loglevel");
+	//open log
 	if (0==build) {
 		ret = ub_log_init(g_conf.log_dir, g_conf.log_file, g_conf.log_size, g_conf.log_level);
 		if (0 != ret) {
@@ -96,16 +92,16 @@ static int serv_loadconf(const char *dir, const char *file, int build)
 			goto out;
 		}
 	}
-	//其它配置信息
-	UB_CONF_GETSVR(conf, "metis", "aodb", &g_conf.aodb, "正向aodb服务");
 
-	UB_CONF_GETNSTR(conf, "data_dir", g_conf.data_dir, sizeof(g_conf.data_dir), "数据文件目录");
-	UB_CONF_GETUINT(conf, "reqbuf_size", &g_conf.reqbuf_size, "请求buffer的长");
-	UB_CONF_GETUINT(conf, "resbuf_size", &g_conf.resbuf_size, "应答buffer的长");
+	UB_CONF_GETSVR(conf, "metis", "aodb", &g_conf.aodb, "aodbservice");
 
-	UB_CONF_GETNSTR(conf, "db_path", g_conf.db_path, sizeof(g_conf.db_path), "db数据所在目录");
-	UB_CONF_GETUINT(conf, "max_open_table", &g_conf.max_open_table, "最多能打开的表的数量");
-	UB_CONF_GETUINT(conf, "devide_table_period", &g_conf.devide_table_period, "分表周期");
+	UB_CONF_GETNSTR(conf, "data_dir", g_conf.data_dir, sizeof(g_conf.data_dir), "datadir");
+	UB_CONF_GETUINT(conf, "reqbuf_size", &g_conf.reqbuf_size, "requestsize");
+	UB_CONF_GETUINT(conf, "resbuf_size", &g_conf.resbuf_size, "responsesize");
+
+	UB_CONF_GETNSTR(conf, "db_path", g_conf.db_path, sizeof(g_conf.db_path), "DBdir");
+	UB_CONF_GETUINT(conf, "max_open_table", &g_conf.max_open_table, "maxopentable");
+	UB_CONF_GETUINT(conf, "devide_table_period", &g_conf.devide_table_period, "dividetableperiod");
     ret = 0;
 out:
 	if (conf) {
@@ -117,11 +113,11 @@ out:
 
 /**
  *
- * 配置项的合法性检查(如果在.range文件已做了检查,本函数可以 do nothing)
+ * configure validate
  *
  * @return
- *       0  : 成功
- *       -1 : 失败
+ *       0  : success
+ *       -1 : fail
  **/
 static int serv_validateconf()
 {
@@ -130,14 +126,14 @@ static int serv_validateconf()
 
 /**
  *
- * 测试load配置文件是否成功
+ * load test
  *
- * @param dir 配置文件的目录
- * @param file 配置文件名
+ * @param dir config dir
+ * @param file config name
  *
  * @return
- *       0  : 成功
- *       -1 : 失败
+ *       0  : success
+ *       -1 : fail
  **/
 static int serv_checkconf(const char *dir, const char *file)
 {
@@ -158,11 +154,11 @@ static int serv_checkconf(const char *dir, const char *file)
 
 /**
  *
- * 服务初始化
+ * service init
  *
  * @return
- *       0  : 成功
- *       -1 : 失败
+ *       0  : success
+ *       -1 : fail
  **/
 static int serv_init()
 {
@@ -170,7 +166,6 @@ static int serv_init()
 
 	signal(SIGPIPE, SIG_IGN);
 
-	//服务相关
 	g_data.aodb_svr = ub_server_create();
 	if (NULL == g_data.aodb_svr) {
 		UB_LOG_FATAL("ub_server_create failed!");
@@ -188,7 +183,6 @@ static int serv_init()
 	ub_server_set_buffer(g_data.aodb_svr, g_conf.aodb.thread_num, NULL,  
                          g_conf.reqbuf_size, NULL, g_conf.resbuf_size);
 
-	//使用激进型回调
 	ub_server_set_callback(g_data.aodb_svr, aodb_cmdproc_callback, NULL);
 
     ret = 0;
@@ -216,7 +210,7 @@ static int init_thread_data()
 }
 
 //
-// 初始化数据，包括全局数据&线程私有数据。
+// Init data
 //
 static int init_data() 
 {
@@ -232,7 +226,7 @@ static int init_data()
 
 
 //
-// 初始化各个模块
+// Init module
 //
 static int init_module() 
 {
@@ -248,16 +242,16 @@ static int init_module()
 
 /**
  *
- *运行服务
+ * service run
  *
  * @return
- *       0  : 成功
- *       -1 : 失败
+ *       0  : success
+ *       -1 : fail
  **/
 static int serv_run() 
 {
     ub_server_setoptsock(g_data.aodb_svr, UBSVR_NODELAY);
-	//aodb服务
+	//aodb
 	int ret = ub_server_run(g_data.aodb_svr);
 	if (0 != ret) {
 		UB_LOG_FATAL("run aodb server failed!");
@@ -269,7 +263,7 @@ static int serv_run()
 
 /**
  *
- *服务的清理工作
+ * service cleanup
  *
  **/
 static void serv_cleanup() 
@@ -323,7 +317,6 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	//读取配置文件
     ret = serv_loadconf(g_conf.conf_dir, g_conf.conf_file, 0);
     if (ret < 0) {
         UB_LOG_FATAL("load config [dir:%s file:%s] failed!",
@@ -331,7 +324,7 @@ int main(int argc, char *argv[])
         goto out;
     }
 
-    // 初始化服务
+    // service init
 	ret = serv_init();
 	if (0 != ret) {
 		UB_LOG_FATAL("serv_init failed! [ret:%d]", ret);
@@ -340,7 +333,7 @@ int main(int argc, char *argv[])
 		UB_LOG_FATAL("serv_init success!");
 	}
 
-    // 初始化数据
+    // init data
     ret = init_data();
     if (0 != ret) {
         UB_LOG_FATAL("init_data failed![ret:%d]", ret);
@@ -349,7 +342,7 @@ int main(int argc, char *argv[])
         UB_LOG_FATAL("init_data success!");
     }
 
-    // 初始化其他模块
+    // init module
     ret = init_module();
     if (0 != ret) {
         UB_LOG_FATAL("init_module failed![ret:%d]", ret);
@@ -358,7 +351,7 @@ int main(int argc, char *argv[])
         UB_LOG_FATAL("init_module success!");
     }
 
-	//服务开始啦!!
+	//run service
 	ret = serv_run();
 	if (0 != ret) {
 		UB_LOG_FATAL("serv_start failed! [ret:%d]", ret);
@@ -368,7 +361,7 @@ int main(int argc, char *argv[])
 	}
 
 out:
-	//清除工作
+	//service clean
 	serv_cleanup();
 	return ret;
 }
