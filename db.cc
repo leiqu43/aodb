@@ -72,7 +72,7 @@ int Db::OpenDb(const std::string& path,
 
 int Db::Initialize()
 {
-    // 扫描符合条件的表
+    //scan table
     std::vector<struct table_info> tables;
     int ret = ScanTable(&tables);
     if (ret < 0) {
@@ -80,7 +80,7 @@ int Db::Initialize()
         return -1;
     }
 
-    // 加载符合条件的表
+    //load table
     ret = LoadTables(tables);
     if (ret < 0) {
         UB_LOG_WARNING("LoadTables failed![ret:%d]", ret);
@@ -149,7 +149,7 @@ int Db::ScanTable(std::vector<struct table_info>* result_tables)
     }
     std::vector<struct table_info> tables_info_array;
     BOOST_FOREACH(const std::string& file, files) {
-        // 表名称：table_yyyy_mm_dd，例如table_20120614
+        //Table name锛歵able_yyyy_mm_dd锛宻uch as, table_20120614
         struct table_info table_info;
         if (file.length() > 4 && file.substr(file.length()-4, 4) == ".ind") {
             table_info.read_only = true;
@@ -210,13 +210,13 @@ int Db::GetAllTables(std::vector<boost::shared_ptr<Table> > *result_tables)
 
 int Db::NewTableWithTableLock()
 {
-    // 开辟新的table
+    //create new table
     if (primary_table_) {
         boost::mutex::scoped_lock tables_list_lock(tables_list_lock_);
         tables_list_.push_front(primary_table_);
         if ((int)tables_list_.size() >= max_open_table_) {
             UB_LOG_TRACE("drop olddest table %s", tables_list_.back()->TableName().c_str());
-            tables_list_.pop_back();    // 析构的时间会不会很长？让bg thread处理？
+            tables_list_.pop_back(); 
         }
         primary_table_->RunBgWorkThread();
     }
@@ -276,7 +276,7 @@ int Db::Put(const std::string& key, const std::string& value)
     assert(key.length());
     assert(value.length());
 
-    // 压缩数据
+    //compress data
     std::string compress_data;
     snappy::Compress(value.data(), value.size(), &compress_data);
     ub_log_pushnotice("compress_ratio", "%04f", ((float)compress_data.length())/value.length());
@@ -286,7 +286,7 @@ int Db::Put(const std::string& key, const std::string& value)
     while (true) {
         boost::mutex::scoped_lock primary_table_lock(primary_table_lock_);
         if (primary_table_ && !primary_table_->CheckFull()) {
-            // 写入数据
+            //write data into table
             ret = primary_table_->Put(key, compress_data);
             if (ret < 0) {
                 UB_LOG_WARNING("Table::Put failed![ret:%d][table:%s]", ret, primary_table_->TableName().c_str());
