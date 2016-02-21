@@ -56,7 +56,7 @@ typedef struct _thread_data_t
 } thread_data_t;
 
 //
-// 全局相关数据
+// global data
 //
 typedef struct _aodb_data_t {
 	ub_server_t *aodb_svr;			      /**<  aodb service */
