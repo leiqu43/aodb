@@ -27,7 +27,7 @@ using namespace MdbInterface;
 using namespace aodb;
 
 //
-// 往某个db写入数据。
+// Put data into DB
 //
 GenericResErr aodb_put(GenericReq *req, google::protobuf::Message **res_msg, thread_data_t *pthr) 
 {
@@ -94,7 +94,7 @@ GenericResErr aodb_put(GenericReq *req, google::protobuf::Message **res_msg, thr
 }
 
 //
-// 从某个db获取数据。
+// Get data from DB
 //
 //
 GenericResErr aodb_get(GenericReq *req, google::protobuf::Message **res_msg, thread_data_t *pthr) 
