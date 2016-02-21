@@ -20,8 +20,6 @@
 
 #ifndef AODB_IMP_H_
 #define AODB_IMP_H_
-
 extern int aodb_cmdproc_callback();
-
 #endif
 
