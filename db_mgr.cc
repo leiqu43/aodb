@@ -114,6 +114,3 @@ DbMgr::~DbMgr()
         delete iter->second;
     }
 }
-
-
-
