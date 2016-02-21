@@ -54,12 +54,11 @@ static void aodb_reset_threaddata(thread_data_t *pthr)
 
 /**
  *
- * aodb的命令处理回调函数
+ * aodb command callback function
  *
- * @return a int 
  * @return
- *       0  : 成功
- *       -1 : 失败,socket将直接关闭,不给client返回错误信息
+ *       0  : success
+ *       -1 : fail
  **/
 int aodb_cmdproc_callback()
 {
@@ -86,7 +85,7 @@ int aodb_cmdproc_callback()
 
 	ub_log_setbasic(UB_LOG_REQSVR, "%s", req_head->provider);
 
-    // 1, 解析请求
+    //1. parse request
     GenericReq req;
     GenericRes res;
     google::protobuf::Message *res_body = NULL;
@@ -119,7 +118,6 @@ int aodb_cmdproc_callback()
     res.set_err(err);
 
     if (ERR_OK == err && res_body) {
-        // 检查required的字段是否已经赋值
         if (false == res_body->IsInitialized()) {
             UB_LOG_FATAL("IsInitialized failed![cmd:%s]", req.cmd().c_str());
             res.set_err(ERR_INTER);
@@ -133,7 +131,7 @@ int aodb_cmdproc_callback()
             goto failed;
         }
 
-        // 响应到保存到body中
+        //put response into buffer
         ret = res_body->SerializeToArray(res_buf, res_buf_size);
         if (false == ret) {
             UB_LOG_WARNING("SerializeToArray failed!");
@@ -145,7 +143,7 @@ int aodb_cmdproc_callback()
     }
 
 failed:
-    // 4, 返回响应
+    //return response
     aodb_reset_res(req_head, res_head);
     if (res.ByteSize() > (ssize_t)res_buf_size) {
         UB_LOG_WARNING("res exceed res buffer size![cur:%d][max:%ld]",
