@@ -1,4 +1,4 @@
-#$Id: Makefile,v 1.5 2008/03/26 03:00:32 baonh Exp $
+
 GCC=g++
 
 WORKROOT=../../../../
