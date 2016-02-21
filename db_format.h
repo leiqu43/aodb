@@ -31,8 +31,7 @@ namespace aodb {
 
 //#pragma pack(push,1)
 //
-// 数据头，数据头后面是具体的key,value数据。
-// 下一条数据偏移为 当前偏移+header_size+key_length+value_length;
+// Data header
 //
 struct aodb_data_header
 {
@@ -42,7 +41,7 @@ struct aodb_data_header
 };
 
 //
-// 索引，用来减少索引重构时间。
+// Index
 //
 struct aodb_index
 {
