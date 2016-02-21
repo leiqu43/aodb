@@ -32,7 +32,7 @@ namespace aodb {
 class Db;
 
 //
-// DB管理器，管理所有的db instance
+// DB manager
 //
 //
 class DbMgr{
@@ -40,17 +40,17 @@ public:
     static DbMgr* instance();
 
     //
-    // 初始化db管理器
+    // Init DB Manager
     //
     int Initialize(const std::string& db_path, int db_max_open_table, int db_devide_table_period);
 
     //
-    // 释放db
+    // Release
     //
     void Release();
 
     //
-    // 根据db_name得到db，如果不存在，那么创建此db。
+    // Get DB based on name
     //
     Db* GetDb(const std::string& db_name, bool new_if_not_exist=false);
 
@@ -59,21 +59,21 @@ private:
     virtual ~DbMgr();
 
     //
-    // 添加一个db
+    // Add a new DB
     //
     Db* AddDb(const std::string& db_name);
 
 private:
-    // db列表。
+    //DB List
     typedef std::map<std::string, Db*> DbDict;
     typedef DbDict::const_iterator DbDictIterator;
     DbDict db_dict_;
     boost::mutex db_dict_lock_;
 
-    // DbMgr锁
+    // DbMgr mutex
     boost::mutex lock_;
 
-    // db所在的目录
+    // DB path
     std::string db_path_;
     int db_max_open_table_;
     int db_devide_table_period_;
