@@ -40,11 +40,9 @@ TEST_F(DbMgrTest, GetDb) {
     Db* db = DbMgr::instance()->GetDb("unittest");
     ASSERT_TRUE(db);
 
-    // 不存在的db
     db = DbMgr::instance()->GetDb("unittest123123");
     ASSERT_FALSE(db);
 
-    // 创建db
     db = DbMgr::instance()->GetDb("unittest_new", 1);
     ASSERT_TRUE(db);
 }
