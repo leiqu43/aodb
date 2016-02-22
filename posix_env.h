@@ -49,7 +49,7 @@ public:
     }
 
     //
-    // ´ÓÖ¸¶¨Æ«ÒÆ¶ÁÈ¡Ö¸¶¨µÄÊý¾Ý
+    // Read data
     //
     int Read(uint64_t offset, size_t n, std::string* result) {
         result->clear();
@@ -82,7 +82,7 @@ public:
     }
 
     //
-    // °ÑÊý¾Ý×·¼ÓÐ´Èëµ½ÎÄ¼þÄ©Î²
+    // Append data to the data file
     //
     ssize_t Append(const std::string& data) {
         return Append(data.c_str(), data.length());
@@ -103,7 +103,7 @@ public:
     }
 
     //
-    // ·µ»ØÎÄ¼þµÄ´óÐ¡
+    // è¿”å›žæ–‡ä»¶çš„å¤§å°
     //
     ssize_t FileSize() {
         return lseek(fd_, 0, SEEK_END);
@@ -170,7 +170,7 @@ public:
         }   
         struct dirent* entry = NULL;
         while ((entry = readdir(d)) != NULL) {
-            if (entry->d_name[0] == '.') continue;  // È¥µôÁÙÊ±ÎÄ¼þÒÔ¼°".",".."Ä¿Â¼
+            if (entry->d_name[0] == '.') continue;  
             if (d_type_filter != 0 && entry->d_type != d_type_filter) continue;
             result->push_back(entry->d_name);
         }   
