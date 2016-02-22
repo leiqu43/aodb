@@ -88,11 +88,8 @@ Table::~Table()
 
 int Table::LoadSortedIndex()
 {
-    //
-    // TODO 用mmap直接加载到内存效率更高
-    //
     PosixRandomAccessFile *index_file_reader = NULL;
-    // 加载排序后索引
+    // Load index then sort
     int ret = PosixEnv::NewRandomAccessFile(index_file_path_, &index_file_reader);
     if (ret < 0) {
         UB_LOG_WARNING("PosixEnv::NewRandomAccessFile failed![ret:%d]", ret);
@@ -111,7 +108,7 @@ int Table::LoadSortedIndex()
     struct aodb_index prev_aodb_index;
     prev_aodb_index.key_sign = 0x0;
     for (int i=0; i<index_item_num; ++i) {
-        // 建立内存索引
+        // Create index in memory
         struct aodb_index aodb_index;
         ret = index_file_reader->Read(i*sizeof(struct aodb_index), sizeof(struct aodb_index), &aodb_index);
         if (ret < 0) {
@@ -128,7 +125,7 @@ int Table::LoadSortedIndex()
 
 int Table::LoadTmpIndex()
 {
-    // 加载临时索引文件
+    // Load temporary index
     int ret = PosixEnv::NewRandomAccessFile(tmp_index_file_path_, &tmp_index_file_writer_);
     if (ret < 0) {
         UB_LOG_WARNING("PosixEnv::NewRandomAccessFile failed![ret:%d]", ret);
@@ -143,7 +140,7 @@ int Table::LoadTmpIndex()
 
     int index_item_num = index_file_size / sizeof(struct aodb_index);
     for (int i=0; i<index_item_num; ++i) {
-        // 建立内存索引
+        // create index in memory
         struct aodb_index aodb_index;
         ret = tmp_index_file_writer_->Read(i*sizeof(struct aodb_index), sizeof(struct aodb_index), &aodb_index);
         if (ret < 0) {
@@ -173,7 +170,7 @@ int Table::Initialize()
 
     int ret = -1;
 
-    // 加载索引
+    // load index
     if (read_only_) {
         ret = LoadSortedIndex();
         if (ret < 0) {
@@ -188,7 +185,7 @@ int Table::Initialize()
         }
     }
 
-    // 加载数据
+    // load data
     ret = PosixEnv::NewRandomAccessFile(data_file_path_, &data_file_reader_writer_);
     if (ret < 0) {
         UB_LOG_WARNING("PosixEnv::NewRandomAccessFile failed![ret:%d][file:%s]",
@@ -210,7 +207,7 @@ void Table::SortIndex()
                   index_dict_) {
         sorted_index_array_.push_back(pair.second);
     }
-    // 上面给出的结果应该是有序的(std::map的实现相关)，std::sort再确认一下，如果有序不会消耗时间
+    
     std::sort(sorted_index_array_.begin(), sorted_index_array_.end());
 }
 
@@ -279,7 +276,7 @@ int Table::Get(const std::string& key, std::string* value)
     assert(0 != key.length());
     assert(0 == value->length());
 
-    // 查找索引
+    // search index
     struct aodb_index aodb_index;
     PosixEnv::CalcMd5_64(key, &aodb_index.key_sign);
     int ret = GetIndex(key, &aodb_index);
@@ -292,7 +289,7 @@ int Table::Get(const std::string& key, std::string* value)
         return 0;
     }
 
-    // 读取数据头
+    // read data header
     aodb_data_header header;
     ret = data_file_reader_writer_->Read(aodb_index.block_offset, sizeof(header), &header);
     if (ret < 0) {
@@ -300,7 +297,7 @@ int Table::Get(const std::string& key, std::string* value)
         return -1;
     }
 
-    // 检查数据头
+    // validate data header
     assert(header.magic_num == MAGIC_NUM);
 
     std::string save_key;
@@ -316,7 +313,7 @@ int Table::Get(const std::string& key, std::string* value)
         return -1;
     }
 
-    // 读value
+    // read value
     ret = data_file_reader_writer_->Read(aodb_index.block_offset + sizeof(header) + header.key_length, \
                                 header.value_length, value);
     if (ret < 0) {
@@ -330,7 +327,6 @@ int Table::Get(const std::string& key, std::string* value)
 
 int Table::Put(const std::string& key, const std::string& value)
 {
-    // MarkAsReadOnly后，就不能Put了，这个应该是上层来控制的。
     assert(!read_only_);
     assert(!in_sorting_);
 
@@ -348,14 +344,14 @@ int Table::Put(const std::string& key, const std::string& value)
     boost::mutex::scoped_lock table_put_lock(table_put_lock_);
     assert(index_dict_.size() <= max_table_size_);
 
-    //  写入数据
+    //write data
     ssize_t offset = data_file_reader_writer_->Append(data);
     if (offset < 0) {
         UB_LOG_WARNING("PosixRandomAccessFile::Append failed![ret:%ld]", offset);
         return -1;
     }
 
-    // 写入索引
+    //write index
     struct aodb_index aodb_index;
     PosixEnv::CalcMd5_64(key, &aodb_index.key_sign);
     aodb_index.block_offset = offset;
@@ -378,7 +374,6 @@ void Table::MarkAsReadOnly()
     assert(!read_only_);
     assert(!in_sorting_);
 
-    // 注意，不应该影响正常的服务
     in_sorting_ = true;
     SortIndex();
     read_only_ = true;
@@ -401,7 +396,7 @@ int Table::SaveSortedIndex()
         aodb_index_file->Append(reinterpret_cast<char*>(&aodb_index), \
                                       sizeof(aodb_index));
     }
-    // 删除临时索引文件
+    //delete temporary index
     ret = unlink(tmp_index_file_path_.c_str());
     assert(0 == ret);
     UB_LOG_DEBUG("SaveSortedIndex success!");
