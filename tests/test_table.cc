@@ -70,7 +70,6 @@ TEST_F(TableTest, Put) {
     delete table;
     table = NULL;
 
-    // 重新打开
     ret = Table::Open("./tmp/", "test_table", 0x10000000, false, &table);
     ASSERT_EQ(ret, 0);
     ASSERT_TRUE(table);
@@ -101,7 +100,6 @@ TEST_F(TableTest, SaveSortedIndexTest) {
     delete table;
     table = NULL;
 
-    // 重新只读方式加载数据
     ret = Table::Open("./tmp/", "test_table", 100000, true, &table);
     ASSERT_EQ(ret, 0);
     ASSERT_TRUE(table);
